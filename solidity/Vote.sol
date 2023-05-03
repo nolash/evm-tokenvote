@@ -18,7 +18,8 @@ contract ERC20Vote {
 		uint256 voteTargetPpm;
 		uint256 scanCursor;
 		address []voters;
-		bool voterVote;
+		//bool voterVote;
+		uint8 voteMode;
 		bool valid;
 		bool active;
 		bool ackScanDone;
@@ -35,21 +36,27 @@ contract ERC20Vote {
 	mapping ( uint256 => uint256 ) budget;
 
 	address newVoter;
-	//mapping ( address => bytes32 ) newVoterDigest;
-	Proposal []proposals;
 
-	uint256 proposalCursor;
+	Proposal[] public proposals;
+
+	uint256 public proposalCursor;
 
 	event ProposalAdded(uint256 indexed _proposalIdx, uint256 indexed _ackBlockDeadline, uint256 indexed voteTargetPpm);
-	event VoterProposalAdded(uint256 indexed _proposalIdx, uint256 indexed _ackBlockDeadline, uint256 indexed voteTargetPpm, address _voter);
+	event VoterProposalAdded(uint256 indexed _proposalIdx, uint256 indexed _ackBlockDeadline, uint8 indexed _voteMode, address _voter);
 	event VotesAdded(uint256 indexed _proposalIdx, address indexed _voter, uint256 indexed _total, uint256 _delta);
 	event VotesWithdrawn(uint256 indexed _proposalIdx, address indexed _voter, uint256 indexed _total, uint256 _delta);
+	event VoteResult(uint256 indexed _proposaldx, bool result);
+	event ProposalInvalid(uint256 _proposalIdx);
 
-	constructor(address _token) {
+	constructor(address _token, address _secondVoter) {
 		token = _token;
+		voters.push(msg.sender);
+		voterState[msg.sender] = block.number;
+		voters.push(_secondVoter);
+		voterState[_secondVoter] = block.number;
 	}
 
-	// bounded processing of all proposals
+	// bounded sequential control of all proposals, to avoid gas lockout.
 	// protects the voter population from changing between a vote has been proposed and it has been processed
 	function scanProposal(uint256 _count) public returns (bool) {
 		uint256 i;
@@ -73,8 +80,8 @@ contract ERC20Vote {
 		return true;
 	}
 
-	// bounded processing of acks for a proposal
-	// when complete, relevant acks will be committed to the proposal and voting ratification can be possible
+	// bounded processing of acks for a proposal, to avoid gas lockout.
+	// when complete, relevant acks will be committed to the proposal and voting ratification can be possible.
 	function scanAck(uint256 _proposalIdx, uint256 _count) public returns (bool) {
 		Proposal storage proposal;
 		uint256 i;
@@ -103,6 +110,9 @@ contract ERC20Vote {
 		return true;
 	}
 
+	// bounded processing of votes, to avoid gas lockout.
+	// can only be called after voting deadline.
+	// adds all cast votes to the tally.
 	function scanVote(uint256 _proposalIdx, uint256 _count) public returns (bool) {
 		Proposal storage proposal;
 		uint256 i;
@@ -132,7 +142,7 @@ contract ERC20Vote {
 		return true;
 	}
 
-	// finalize proposal and result
+	// finalize proposal and result.
 	function ratify(uint256 _proposalIdx) public returns (bool) {
 		Proposal storage proposal;
 		uint256 tallyPpm;
@@ -141,7 +151,7 @@ contract ERC20Vote {
 		proposal = getActive(_proposalIdx);
 
 		require(proposal.voteScanDone, "ERR_VOTE_SCAN_MISSING");
-		if (proposal.voterVote) {
+		if (proposal.voteMode > 0) {
 			require(_proposalIdx == proposalCursor, "ERR_PREMATURE_VOTERVOTE");
 		}
 
@@ -149,13 +159,30 @@ contract ERC20Vote {
 		budgetPpm = budget[_proposalIdx] * 1000000;
 
 		if (tallyPpm / budgetPpm >= proposal.voteTargetPpm) {
-			proposal.result = true;
+			proposal.result = checkRatify(proposal);
 		}
 		proposal.active = false;
+		emit VoteResult(_proposalIdx, proposal.result);
 		return proposal.result;
 	}
 
-	// Common code for propose and proposeVoter
+	function checkRatify(Proposal storage _proposal) private returns (bool) {
+		if (_proposal.voteMode == 1) {
+			if (voterState[newVoter] == 0) {
+				voters.push(newVoter);
+			} else {
+				voterState[newVoter] = block.number;
+			}
+			newVoter = address(0);
+		}
+		if (_proposal.voteMode < 2) {
+			return true;
+		}
+		voterState[newVoter] = 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
+		return true;
+	}
+
+	// Common code for propose and proposeVoter.
 	function proposeCore(bytes32 _digest, uint256 _ackBlockDeadline, uint256 _voteBlockDeadline, uint256 _voteTargetPpm) private returns (uint256) {
 		require(_ackBlockDeadline > block.number);
 		require(_voteBlockDeadline > _ackBlockDeadline);
@@ -191,7 +218,17 @@ contract ERC20Vote {
 	}
 
 	// Propose addition of a new voter.
-	function proposeVoter(address _voter, uint256 _ackBlockDeadline, uint256 _voteBlockDeadline, uint256 _voteTargetPpm) public returns (uint256) {
+	function proposeAddVoter(address _voter, uint256 _ackBlockDeadline, uint256 _voteBlockDeadline, uint256 _voteTargetPpm) public returns (uint256) {
+		return proposeVoterCore(_voter, _ackBlockDeadline, _voteBlockDeadline, _voteTargetPpm, 1);
+	}
+
+
+	// Propose removal of an existing voter.
+	function proposeRemoveVoter(address _voter, uint256 _ackBlockDeadline, uint256 _voteBlockDeadline, uint256 _voteTargetPpm) public returns (uint256) {
+		return proposeVoterCore(_voter, _ackBlockDeadline, _voteBlockDeadline, _voteTargetPpm, 2);
+	}
+	
+	function proposeVoterCore(address _voter, uint256 _ackBlockDeadline, uint256 _voteBlockDeadline, uint256 _voteTargetPpm, uint8 _voteMode) public returns (uint256) {
 		bytes32 voterDigest;
 		bytes memory voterDigestMaterial;
 		uint256 proposalIdx;
@@ -201,11 +238,10 @@ contract ERC20Vote {
 		newVoter = _voter;	
 		voterDigestMaterial = abi.encodePacked("bytes", bytes20(_voter));
 		voterDigest = sha256(voterDigestMaterial);
-		//newVoterDigest[_voter] = voterDigest;
 
 		proposalIdx = proposeCore(voterDigest, _ackBlockDeadline, _voteBlockDeadline, _voteTargetPpm);
-		proposals[proposalIdx].voterVote = true;
-		emit VoterProposalAdded(proposalIdx, _ackBlockDeadline, _voteTargetPpm, _voter);
+		proposals[proposalIdx].voteMode = _voteMode;
+		emit VoterProposalAdded(proposalIdx, _ackBlockDeadline, _voteMode, _voter);
 		return proposalIdx;
 	}
 
@@ -313,6 +349,7 @@ contract ERC20Vote {
 			proposal = proposals[_proposalIdx];
 			proposal.valid = false;
 			proposal.active = false;
+			emit ProposalInvalid(_proposalIdx);
 			return 0;
 		}
 		return balance;
