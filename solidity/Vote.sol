@@ -6,6 +6,12 @@ pragma solidity ^0.8.0;
 // Description: Voting contract using ERC20 tokens as shares
 
 contract ERC20Vote {
+	uint8 constant STATE_FINAL = 1;
+	uint8 constant STATE_SCANNED = 2;
+	uint8 constant STATE_INSUFFICIENT = 4;
+	uint8 constant STATE_TIED = 8;
+	uint8 constant STATE_SUPPLYCHANGE = 16;
+
 	address public token;
 
 	struct Proposal {
@@ -17,9 +23,8 @@ contract ERC20Vote {
 		uint256 blockDeadline;
 		uint24 targetVotePpm;
 		address proposer;
-		int16 result;
+		uint8 state;
 		uint8 scanCursor;
-		bool active;
 	}
 
 	Proposal[] public proposals;
@@ -35,7 +40,8 @@ contract ERC20Vote {
 		token = _token;
 	}
 
-	function proposeCore(bytes32 _description, bytes32[] calldata _options, uint256 _blockDeadline, uint24 _targetVotePpm) private returns (uint256) {
+	// Propose a vote on the subject described by digest.
+	function propose(bytes32 _description, bytes32[] calldata _options, uint256 _blockDeadline, uint24 _targetVotePpm) public returns (uint256) {
 		Proposal memory l_proposal;
 		uint256 l_proposalIndex;
 
@@ -48,28 +54,24 @@ contract ERC20Vote {
 		l_proposalIndex = proposals.length;
 		proposals.push(l_proposal);
 		l_proposal.supply = checkSupply(proposals[l_proposalIndex]);
+
+		emit ProposalAdded(_blockDeadline, _targetVotePpm, l_proposalIndex);
 		return l_proposalIndex;
-	}
-
-	// Propose a vote on the subject described by digest.
-	function propose(bytes32 _description, bytes32[] calldata _options, uint256 _blockDeadline, uint24 _targetVotePpm) public returns (uint256) {
-		uint256 r;
-
-		r = proposeCore(_description, _options, _blockDeadline, _targetVotePpm);
-		emit ProposalAdded(_blockDeadline, _targetVotePpm, r);
-		return r;
 	}
 
 	// Cast votes on an option by locking ERC20 token in contract.
 	// Votes may be divided on several options.
-	function vote(uint256 _optionIndex, uint256 _value) public {
+	// If false is returned, proposal has been invalidated.
+	function vote(uint256 _optionIndex, uint256 _value) public returns (bool) {
 		Proposal storage proposal;
 		bool r;
 		bytes memory v;
 
 		proposal = proposals[currentProposal];
+		if (checkSupply(proposal) == 0) {
+			return false;
+		}
 		require(proposal.blockDeadline < block.number, "ERR_DEADLINE");
-		require(proposal.active, "ERR_PROPOSAL_INACTIVE");
 		if (proposalIdxLock[msg.sender] > 0) {
 			require(proposalIdxLock[msg.sender] == currentProposal, "ERR_RECOVER_FIRST");
 		}
@@ -84,68 +86,80 @@ contract ERC20Vote {
 		balanceOf[msg.sender] += _value;
 		proposal.total += _value;
 		proposal.optionVotes[_optionIndex] += _value;
+		return true;
 	}
 
-	function scan(uint8 _count) public returns (int16) {
+	// Optionally scan the results for a proposal to make result visible.
+	// Returns false as long as there are more options to scan.
+	function scan(uint256 _proposalIndex, uint8 _count) public returns (bool) {
 		Proposal storage proposal;
 		uint8 i;
 		uint16 lead;
 		uint256 hi;
 		uint256 score;
 		uint8 c;
+		uint8 state;
 
-		proposal = proposals[currentProposal];
-		require(proposal.active, "ERR_INACTIVE");
+		proposal = proposals[_proposalIndex];
 		require(proposal.blockDeadline <= block.number, "ERR_PREMATURE");
-		require(proposal.scanCursor < proposal.options.length, "ERR_ALREADY_SCANNED");
+		if (proposal.state & STATE_SCANNED > 0) {
+			return false;
+		}
+
 		c = proposal.scanCursor;
 		if (c + _count > proposal.options.length) {
 			_count = uint8(proposal.options.length) - c;
 		}
 
 		_count += c;
+		state = proposal.state;
 		for (i = c; i < _count; i++) {
 			score = proposal.optionVotes[i];
 			if (score > 0 && score == hi) {
-				proposal.result = -2;
+				state |= STATE_TIED;
 			} else if (score > hi) {
 				hi = score;
 				lead = i;
-				proposal.result = int16(lead);
+				state &= ~STATE_TIED;
 			}
 			c += 1;
 		}
-		if (c == proposal.options.length) {
-			proposal.active = false;
-		}
 		proposal.scanCursor = c;
-		return proposal.result;
+		proposal.state = state;
+		if (proposal.scanCursor < proposal.options.length) {
+			proposal.state |= STATE_SCANNED;
+		}
+		return proposal.state & STATE_SCANNED > 0;
 	}
 
+	// finalize the results after scanning for winning result.
+	// will record and return whether voting participation was insufficient.
 	function finalize() public returns (bool) {
 		Proposal storage proposal;
 		uint256 l_total_m;
 		uint256 l_supply_m;
 
 		proposal = proposals[currentProposal];
-		require(proposal.result != 0, "ERR_SCAN_FIRST");
-		require(proposal.active, "ERR_INACTIVE");
-
-		if (proposal.result < 0) {
+		require(proposal.state & STATE_FINAL == 0, "ERR_ALREADY_STATE_FINAL");
+		require(proposal.state & STATE_SCANNED == 0, "ERR_SCAN_FIRST");
+		if (checkSupply(proposal) == 0) {
 			return false;
 		}
+		proposal.state |= STATE_FINAL;
+		currentProposal += 1;
 
 		l_total_m = proposal.total * 1000000;
 		l_supply_m = proposal.supply * 1000000;
 
 		if (l_supply_m / l_total_m < proposal.targetVotePpm) {
-			proposal.result = -3;
+			proposal.state |= STATE_INSUFFICIENT;
 			return false;
 
 		}
 		return true;
 	}
-	
+
+	// should be checked for proposal creation, each recorded vote and finalization.	
 	function checkSupply(Proposal storage proposal) private returns (uint256) {
 		bool r;
 		bytes memory v;
@@ -159,8 +173,8 @@ contract ERC20Vote {
 		if (proposal.supply == 0) {
 			proposal.supply = l_supply;
 		} else {
-			proposal.active = false;
-			proposal.result = -1;
+			proposal.state |= STATE_SUPPLYCHANGE;
+			proposal.state |= STATE_FINAL;
 			currentProposal += 1;
 			return 0;
 		}
@@ -176,12 +190,11 @@ contract ERC20Vote {
 		uint256 l_value;
 
 		proposal = proposals[currentProposal];
-		checkSupply(proposal);
 
 		l_value = balanceOf[msg.sender];
 		if (proposalIdxLock[msg.sender] == currentProposal) {
 			if (proposal.blockDeadline <= block.number) {
-				require(proposal.result == 0, "ERR_PREMATURE");
+				require(proposal.state & STATE_FINAL == 0, "ERR_PREMATURE");
 			} else {
 				proposal.total -= l_value;
 			}
