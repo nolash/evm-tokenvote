@@ -9,349 +9,191 @@ contract ERC20Vote {
 	address public token;
 
 	struct Proposal {
-		bytes32 digest;
-		bytes32 state;
-		uint256 voterMax;
+		bytes32 description;
+		bytes32 []options;
+		uint256 []optionVotes;
+		uint256 supply;
+		uint256 total;
+		uint256 blockDeadline;
+		uint24 targetVotePpm;
 		address proposer;
-		uint256 ackBlockDeadline;
-		uint256 voteBlockDeadline;
-		uint256 voteTargetPpm;
-		uint256 scanCursor;
-		address []voters;
-		//bool voterVote;
-		uint8 voteMode;
-		bool valid;
+		int16 result;
+		uint8 scanCursor;
 		bool active;
-		bool ackScanDone;
-		bool voteScanDone;
-		bool result;
 	}
-	Proposal emptyProposal;
-
-	mapping ( address => uint256 ) voterState;
-	address[] public voters;
-	mapping ( uint256 => mapping ( address => uint256 ) ) ack;
-	mapping ( uint256 => mapping ( address => uint256 ) ) vote;
-	mapping ( uint256 => uint256 ) tally;
-	mapping ( uint256 => uint256 ) budget;
-
-	address newVoter;
 
 	Proposal[] public proposals;
 
-	uint256 public proposalCursor;
+	uint256 public currentProposal;
 
-	event ProposalAdded(uint256 indexed _proposalIdx, uint256 indexed _ackBlockDeadline, uint256 indexed voteTargetPpm);
-	event VoterProposalAdded(uint256 indexed _proposalIdx, uint256 indexed _ackBlockDeadline, uint8 indexed _voteMode, address _voter);
-	event VotesAdded(uint256 indexed _proposalIdx, address indexed _voter, uint256 indexed _total, uint256 _delta);
-	event VotesWithdrawn(uint256 indexed _proposalIdx, address indexed _voter, uint256 indexed _total, uint256 _delta);
-	event VoteResult(uint256 indexed _proposaldx, bool result);
-	event ProposalInvalid(uint256 _proposalIdx);
+	mapping ( address => uint256 ) public balanceOf;
+	mapping ( address => uint256 ) proposalIdxLock;
 
-	constructor(address _token, address _secondVoter) {
+	event ProposalAdded(uint256 indexed _blockDeadline, uint256 indexed voteTargetPpm, uint256 indexed _proposalIdx);
+
+	constructor(address _token) {
 		token = _token;
-		voters.push(msg.sender);
-		voterState[msg.sender] = block.number;
-		voters.push(_secondVoter);
-		voterState[_secondVoter] = block.number;
 	}
 
-	// bounded sequential control of all proposals, to avoid gas lockout.
-	// protects the voter population from changing between a vote has been proposed and it has been processed
-	function scanProposal(uint256 _count) public returns (bool) {
-		uint256 i;
-		uint256 delta;
-		Proposal storage proposal;
+	function proposeCore(bytes32 _description, bytes32[] calldata _options, uint256 _blockDeadline, uint24 _targetVotePpm) private returns (uint256) {
+		Proposal memory l_proposal;
+		uint256 l_proposalIndex;
 
-		if (proposalCursor + _count > proposals.length) {
-			_count = proposals.length - proposalCursor;
-		}
-
-		for (i = proposalCursor; i < proposals.length; i++) {
-			proposal = proposals[proposalCursor];
-			if (!proposal.active) {
-				delta += 1;
-			}
-		}
-		proposalCursor += delta;
-		if (proposalCursor == proposals.length) {
-			return false;
-		}
-		return true;
-	}
-
-	// bounded processing of acks for a proposal, to avoid gas lockout.
-	// when complete, relevant acks will be committed to the proposal and voting ratification can be possible.
-	function scanAck(uint256 _proposalIdx, uint256 _count) public returns (bool) {
-		Proposal storage proposal;
-		uint256 i;
-
-		proposal = getActive(_proposalIdx);
-
-		require(!proposal.ackScanDone);
-
-		if (proposal.scanCursor + _count > voters.length) {
-			_count = voters.length - proposal.scanCursor;
-		}
-
-		for (i = proposal.scanCursor; i < proposal.scanCursor + _count; i++) {
-			address voter;
-			if (i == proposal.voterMax) {
-				proposal.scanCursor = 0;
-				proposal.ackScanDone = true;
-				return false;
-			}
-			voter = voters[i];
-			if (voterState[voter] > 0) {
-				proposal.voters.push(voter);
-			}
-			proposal.scanCursor = i;
-		}
-		return true;
-	}
-
-	// bounded processing of votes, to avoid gas lockout.
-	// can only be called after voting deadline.
-	// adds all cast votes to the tally.
-	function scanVote(uint256 _proposalIdx, uint256 _count) public returns (bool) {
-		Proposal storage proposal;
-		uint256 i;
-
-		proposal = getActive(_proposalIdx);
-		require(proposal.voteBlockDeadline <= block.timestamp);
-		require(!proposal.voteScanDone);
-
-		if (proposal.scanCursor + _count > proposal.voters.length) {
-			_count = proposal.voters.length - proposal.scanCursor;
-		}
-
-		for (i = proposal.scanCursor; i < proposal.scanCursor + _count; i++) {
-			address voter;
-			if (checkProposalBalance(_proposalIdx, voter) == 0) {
-				return false;
-			}
-			if (i == proposal.voters.length) {
-				proposal.scanCursor = 0;
-				proposal.voteScanDone = true;
-				return false;
-			}
-			voter = voters[i];
-			tally[_proposalIdx] += vote[_proposalIdx][voter];
-			proposal.scanCursor = i;
-		}
-		return true;
-	}
-
-	// finalize proposal and result.
-	function ratify(uint256 _proposalIdx) public returns (bool) {
-		Proposal storage proposal;
-		uint256 tallyPpm;
-		uint256 budgetPpm;
-
-		proposal = getActive(_proposalIdx);
-
-		require(proposal.voteScanDone, "ERR_VOTE_SCAN_MISSING");
-		if (proposal.voteMode > 0) {
-			require(_proposalIdx == proposalCursor, "ERR_PREMATURE_VOTERVOTE");
-		}
-
-		tallyPpm = tally[_proposalIdx] * 1000000;
-		budgetPpm = budget[_proposalIdx] * 1000000;
-
-		if (tallyPpm / budgetPpm >= proposal.voteTargetPpm) {
-			proposal.result = checkRatify(proposal);
-		}
-		proposal.active = false;
-		emit VoteResult(_proposalIdx, proposal.result);
-		return proposal.result;
-	}
-
-	function checkRatify(Proposal storage _proposal) private returns (bool) {
-		if (_proposal.voteMode == 1) {
-			if (voterState[newVoter] == 0) {
-				voters.push(newVoter);
-			} else {
-				voterState[newVoter] = block.number;
-			}
-			newVoter = address(0);
-		}
-		if (_proposal.voteMode < 2) {
-			return true;
-		}
-		voterState[newVoter] = 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
-		return true;
-	}
-
-	// Common code for propose and proposeVoter.
-	function proposeCore(bytes32 _digest, uint256 _ackBlockDeadline, uint256 _voteBlockDeadline, uint256 _voteTargetPpm) private returns (uint256) {
-		require(_ackBlockDeadline > block.number);
-		require(_voteBlockDeadline > _ackBlockDeadline);
-		require(voters.length > 1);
-
-		Proposal memory proposal;
-		uint256 idx;
-
-		proposal.digest = _digest;
-		proposal.proposer = msg.sender;
-		proposal.voterMax = voters.length - 1;
-		proposal.ackBlockDeadline = _ackBlockDeadline;
-		proposal.voteBlockDeadline = _voteBlockDeadline;
-		proposal.valid = true;
-		proposal.active = true;
-		proposal.voteTargetPpm = _voteTargetPpm;
-
-		idx = proposals.length;
-		proposals.push(proposal);
-
-		return idx;
+		require(_options.length < 256, "ERR_TOO_MANY_OPTIONS");
+		l_proposal.proposer = msg.sender;
+		l_proposal.description = _description;
+		l_proposal.options = _options;
+		l_proposal.targetVotePpm = _targetVotePpm;
+		l_proposal.blockDeadline = _blockDeadline;
+		l_proposalIndex = proposals.length;
+		proposals.push(l_proposal);
+		l_proposal.supply = checkSupply(proposals[l_proposalIndex]);
+		return l_proposalIndex;
 	}
 
 	// Propose a vote on the subject described by digest.
-	function propose(bytes32 _digest, uint256 _ackBlockDeadline, uint256 _voteBlockDeadline, uint256 _voteTargetPpm) public returns (uint256) {
+	function propose(bytes32 _description, bytes32[] calldata _options, uint256 _blockDeadline, uint24 _targetVotePpm) public returns (uint256) {
 		uint256 r;
 
-		require(newVoter == address(0x0), "ERR_VOTERCHANGE_BLOCK");
-
-		r = proposeCore(_digest, _ackBlockDeadline, _voteBlockDeadline, _voteTargetPpm);
-		emit ProposalAdded(r, _ackBlockDeadline, _voteTargetPpm);
+		r = proposeCore(_description, _options, _blockDeadline, _targetVotePpm);
+		emit ProposalAdded(_blockDeadline, _targetVotePpm, r);
 		return r;
 	}
 
-	// Propose addition of a new voter.
-	function proposeAddVoter(address _voter, uint256 _ackBlockDeadline, uint256 _voteBlockDeadline, uint256 _voteTargetPpm) public returns (uint256) {
-		return proposeVoterCore(_voter, _ackBlockDeadline, _voteBlockDeadline, _voteTargetPpm, 1);
-	}
-
-
-	// Propose removal of an existing voter.
-	function proposeRemoveVoter(address _voter, uint256 _ackBlockDeadline, uint256 _voteBlockDeadline, uint256 _voteTargetPpm) public returns (uint256) {
-		return proposeVoterCore(_voter, _ackBlockDeadline, _voteBlockDeadline, _voteTargetPpm, 2);
-	}
-	
-	function proposeVoterCore(address _voter, uint256 _ackBlockDeadline, uint256 _voteBlockDeadline, uint256 _voteTargetPpm, uint8 _voteMode) public returns (uint256) {
-		bytes32 voterDigest;
-		bytes memory voterDigestMaterial;
-		uint256 proposalIdx;
-
-		require(newVoter == address(0x0), "ERR_VOTERCHANGE_BLOCK");
-
-		newVoter = _voter;	
-		voterDigestMaterial = abi.encodePacked("bytes", bytes20(_voter));
-		voterDigest = sha256(voterDigestMaterial);
-
-		proposalIdx = proposeCore(voterDigest, _ackBlockDeadline, _voteBlockDeadline, _voteTargetPpm);
-		proposals[proposalIdx].voteMode = _voteMode;
-		emit VoterProposalAdded(proposalIdx, _ackBlockDeadline, _voteMode, _voter);
-		return proposalIdx;
-	}
-
-	// returns the active state.
-	function getActive(uint256 _proposalIdx) private returns (Proposal storage) {
+	// Cast votes on an option by locking ERC20 token in contract.
+	// Votes may be divided on several options.
+	function vote(uint256 _optionIndex, uint256 _value) public {
 		Proposal storage proposal;
+		bool r;
+		bytes memory v;
 
-		proposal = proposals[_proposalIdx];
-		if (!proposal.valid) {
-			return emptyProposal;
+		proposal = proposals[currentProposal];
+		require(proposal.blockDeadline < block.number, "ERR_DEADLINE");
+		require(proposal.active, "ERR_PROPOSAL_INACTIVE");
+		if (proposalIdxLock[msg.sender] > 0) {
+			require(proposalIdxLock[msg.sender] == currentProposal, "ERR_RECOVER_FIRST");
 		}
-		if (!proposal.active) {
-			return emptyProposal;
+		require(_optionIndex < proposal.options.length, "ERR_OPTION_INVALID");
+
+		(r, v) = token.call(abi.encodeWithSignature('transferFrom', msg.sender, this, _value));
+		require(r, "ERR_TOKEN");
+		r = abi.decode(v, (bool));
+		require(r, "ERR_TRANSFER");
+
+		proposalIdxLock[msg.sender] = currentProposal;
+		balanceOf[msg.sender] += _value;
+		proposal.total += _value;
+		proposal.optionVotes[_optionIndex] += _value;
+	}
+
+	function scan(uint8 _count) public returns (int16) {
+		Proposal storage proposal;
+		uint8 i;
+		uint16 lead;
+		uint256 hi;
+		uint256 score;
+		uint8 c;
+
+		proposal = proposals[currentProposal];
+		require(proposal.active, "ERR_INACTIVE");
+		require(proposal.blockDeadline <= block.number, "ERR_PREMATURE");
+		require(proposal.scanCursor < proposal.options.length, "ERR_ALREADY_SCANNED");
+		c = proposal.scanCursor;
+		if (c + _count > proposal.options.length) {
+			_count = uint8(proposal.options.length) - c;
 		}
-		if (block.number >= proposal.voteBlockDeadline) {
+
+		_count += c;
+		for (i = c; i < _count; i++) {
+			score = proposal.optionVotes[i];
+			if (score > 0 && score == hi) {
+				proposal.result = -2;
+			} else if (score > hi) {
+				hi = score;
+				lead = i;
+				proposal.result = int16(lead);
+			}
+			c += 1;
+		}
+		if (c == proposal.options.length) {
 			proposal.active = false;
 		}
-		return proposal;
+		proposal.scanCursor = c;
+		return proposal.result;
 	}
 
-	// register ack for a proposal
-	function ackProposal(uint256 _proposalIdx) public returns (bool) {
+	function finalize() public returns (bool) {
 		Proposal storage proposal;
-		uint256 balance;
+		uint256 l_total_m;
+		uint256 l_supply_m;
 
-		proposal = getActive(_proposalIdx);
-		require(proposal.active, "ERR_PROPOSAL_INACTIVE");
-		require(proposal.ackBlockDeadline < block.number, "ERR_ACK_EXPIRE");
+		proposal = proposals[currentProposal];
+		require(proposal.result != 0, "ERR_SCAN_FIRST");
+		require(proposal.active, "ERR_INACTIVE");
 
-		if (ack[_proposalIdx][msg.sender] > 0) {
+		if (proposal.result < 0) {
 			return false;
 		}
-		balance = getBalance(msg.sender);
-		ack[_proposalIdx][msg.sender] = balance;
-		budget[_proposalIdx] += balance;
+
+		l_total_m = proposal.total * 1000000;
+		l_supply_m = proposal.supply * 1000000;
+
+		if (l_supply_m / l_total_m < proposal.targetVotePpm) {
+			proposal.result = -3;
+			return false;
+
+		}
 		return true;
 	}
-
-	// spend votes on proposal 
-	function spendVote(uint256 _proposalIdx, uint256 _amount) public returns (uint256) {
-		uint256 balance;
-		uint256 usedBalance;
-		Proposal storage proposal;
-
-		proposal = getActive(_proposalIdx);
-		require(proposal.active, "ERR_PROPOSAL_INACTIVE");
 	
-		balance = checkProposalBalance(_proposalIdx, msg.sender);
-		if (balance == 0) {
-			return 0;
-		}
-
-		usedBalance = vote[_proposalIdx][msg.sender];
-		require(balance - usedBalance >= _amount);
-		usedBalance += _amount;
-		vote[_proposalIdx][msg.sender] = usedBalance;
-		emit VotesAdded(_proposalIdx, msg.sender, usedBalance, _amount);
-
-		return usedBalance;
-	}
-
-	// withdraw spent votes on proposal 
-	function withdrawVote(uint256 _proposalIdx, uint256 _amount) public returns (uint256) {
-		Proposal storage proposal;
-		uint256 balance;
-		uint256 usedBalance;
-
-		proposal = getActive(_proposalIdx);
-		require(proposal.active, "ERR_PROPOSAL_INACTIVE");
-
-		balance = checkProposalBalance(_proposalIdx, msg.sender);
-		if (balance == 0) {
-			return 0;
-		}
-
-		usedBalance = vote[_proposalIdx][msg.sender];
-		require(usedBalance >= _amount);
-		usedBalance -= _amount;
-		vote[_proposalIdx][msg.sender] = usedBalance;
-		emit VotesWithdrawn(_proposalIdx, msg.sender, usedBalance, _amount);
-
-		return usedBalance;
-	}
-
-	// retrieve token balance from backing erc20 token.
-	function getBalance(address _voter) private returns (uint256) {
+	function checkSupply(Proposal storage proposal) private returns (uint256) {
+		bool r;
 		bytes memory v;
-		bool ok;
+		uint256 l_supply;
 
-		(ok, v) = token.call(abi.encodeWithSignature('balanceOf', _voter));
-		require(ok);
-		return abi.decode(v, (uint256));
-	}
+		(r, v) = token.call(abi.encodeWithSignature('totalSupply'));
+		require(r, "ERR_TOKEN");
+		l_supply = abi.decode(v, (uint256));
 
-	// invalidate proposal if terms of the vote has changed:
-	// * current voter balance does not match voter balance at time of acknowledgement
-	function checkProposalBalance(uint256 _proposalIdx, address _voter) private returns (uint256) {
-		uint256 balance;
-		uint256 origBalance;
-
-		balance = getBalance(_voter);
-		origBalance = ack[_proposalIdx][_voter];
-		if (balance != origBalance) {
-			Proposal storage proposal;
-			proposal = proposals[_proposalIdx];
-			proposal.valid = false;
+		require(l_supply > 0, "ERR_ZERO_SUPPLY");
+		if (proposal.supply == 0) {
+			proposal.supply = l_supply;
+		} else {
 			proposal.active = false;
-			emit ProposalInvalid(_proposalIdx);
+			proposal.result = -1;
+			currentProposal += 1;
 			return 0;
 		}
-		return balance;
+		
+		return l_supply;
+	}
+
+	// Recover tokens from a finished vote or from an active vote before deadline.
+	function recover() public returns (uint256) {
+		Proposal storage proposal;
+		bool r;
+		bytes memory v;
+		uint256 l_value;
+
+		proposal = proposals[currentProposal];
+		checkSupply(proposal);
+
+		l_value = balanceOf[msg.sender];
+		if (proposalIdxLock[msg.sender] == currentProposal) {
+			if (proposal.blockDeadline <= block.number) {
+				require(proposal.result == 0, "ERR_PREMATURE");
+			} else {
+				proposal.total -= l_value;
+			}
+		}
+
+		balanceOf[msg.sender] = 0;
+		proposalIdxLock[msg.sender] = 0;
+		(r, v) = token.call(abi.encodeWithSignature('transfer', msg.sender, l_value));
+		require(r, "ERR_TOKEN");
+		r = abi.decode(v, (bool));
+		require(r, "ERR_TRANSFER");
+
+		return l_value;
 	}
 }
