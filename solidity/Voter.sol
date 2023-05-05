@@ -90,23 +90,26 @@ contract ERC20Vote {
 	}
 
 	// Cast votes on an option by locking ERC20 token in contract.
-	// Votes may be divided on several options.
+	// Votes may be divided on several options as long as balance is sufficient.
 	// If false is returned, proposal has been invalidated.
-	function vote(uint256 _optionIndex, uint256 _value) public returns (bool) {
+	function voteOption(uint256 _optionIndex, uint256 _value) public returns (bool) {
 		Proposal storage proposal;
 		bool r;
 		bytes memory v;
 
 		mustAccount(msg.sender);
 		proposal = proposals[currentProposal];
+		require(proposal.state & STATE_INIT > 0, "ERR_PROPOSAL_INACTIVE");
 		if (checkSupply(proposal) == 0) {
 			return false;
 		}
-		require(proposal.blockDeadline < block.number, "ERR_DEADLINE");
+		require(proposal.blockDeadline > block.number, "ERR_DEADLINE");
 		if (proposalIdxLock[msg.sender] > 0) {
 			require(proposalIdxLock[msg.sender] == currentProposal, "ERR_RECOVER_FIRST");
 		}
-		require(_optionIndex < proposal.options.length, "ERR_OPTION_INVALID");
+		if (proposal.options.length > 0) {
+			require(_optionIndex < proposal.options.length, "ERR_OPTION_INVALID");
+		}
 
 		(r, v) = token.call(abi.encodeWithSignature('transferFrom(address,address,uint256)', msg.sender, this, _value));
 		require(r, "ERR_TOKEN");
@@ -116,8 +119,17 @@ contract ERC20Vote {
 		proposalIdxLock[msg.sender] = currentProposal;
 		balanceOf[msg.sender] += _value;
 		proposal.total += _value;
-		proposal.optionVotes[_optionIndex] += _value;
+		if (proposal.options.length > 0) {
+			proposal.optionVotes[_optionIndex] += _value;
+		}
 		return true;
+	}
+
+	// Cast vote for a proposal without options
+	// Can be called multiple times as long as balance is sufficient.
+	// If false is returned, proposal has been invalidated.
+	function vote(uint256 _value) public returns (bool) {
+		return voteOption(0, _value);
 	}
 
 	// Optionally scan the results for a proposal to make result visible.
@@ -135,6 +147,11 @@ contract ERC20Vote {
 		require(proposal.blockDeadline <= block.number, "ERR_PREMATURE");
 		if (proposal.state & STATE_SCANNED > 0) {
 			return false;
+		}
+
+		if (proposal.options.length == 0) {
+			proposal.state |= STATE_SCANNED;
+			return true;
 		}
 
 		c = proposal.scanCursor;
@@ -168,11 +185,10 @@ contract ERC20Vote {
 	function finalize() public returns (bool) {
 		Proposal storage proposal;
 		uint256 l_total_m;
-		uint256 l_supply_m;
 
 		proposal = proposals[currentProposal];
 		require(proposal.state & STATE_FINAL == 0, "ERR_ALREADY_STATE_FINAL");
-		require(proposal.state & STATE_SCANNED == 0, "ERR_SCAN_FIRST");
+		require(proposal.state & STATE_SCANNED > 0, "ERR_SCAN_FIRST");
 		if (checkSupply(proposal) == 0) {
 			return false;
 		}
@@ -180,9 +196,8 @@ contract ERC20Vote {
 		currentProposal += 1;
 
 		l_total_m = proposal.total * 1000000;
-		l_supply_m = proposal.supply * 1000000;
 
-		if (l_supply_m / l_total_m < proposal.targetVotePpm) {
+		if (l_total_m / proposal.supply < proposal.targetVotePpm) {
 			proposal.state |= STATE_INSUFFICIENT;
 			return false;
 
@@ -203,7 +218,7 @@ contract ERC20Vote {
 		require(l_supply > 0, "ERR_ZERO_SUPPLY");
 		if (proposal.supply == 0) {
 			proposal.supply = l_supply;
-		} else {
+		} else if (l_supply != proposal.supply) {
 			proposal.state |= STATE_SUPPLYCHANGE;
 			proposal.state |= STATE_FINAL;
 			currentProposal += 1;

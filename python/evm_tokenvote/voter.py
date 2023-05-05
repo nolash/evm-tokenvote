@@ -53,7 +53,7 @@ class Proposal:
 
 
     def __str__(self):
-        return "proposal with description: " + self.description_digest
+        return "proposal description {} total {} supply {}".format(self.description_digest, self.total, self.supply)
 
 
 class Voter(TxFactory):
@@ -125,6 +125,49 @@ class Voter(TxFactory):
         return tx
 
 
+    def vote(self, contract_address, sender_address, value, option=None, tx_format=TxFormat.JSONRPC, id_generator=None):
+        enc = ABIContractEncoder()
+        if option == None:
+            enc.method('vote')
+            enc.typ(ABIContractType.UINT256)
+        else:
+            enc.method('voteOption')
+            enc.typ(ABIContractType.UINT256)
+            enc.typ(ABIContractType.UINT256)
+        if option != None:
+            enc.uint256(option)
+        enc.uint256(value)
+        data = add_0x(enc.get())
+        tx = self.template(sender_address, contract_address, use_nonce=True)
+        tx = self.set_code(tx, data)
+        tx = self.finalize(tx, tx_format, id_generator=id_generator)
+        return tx
+
+
+    def scan(self, contract_address, sender_address, proposal_index, count, tx_format=TxFormat.JSONRPC, id_generator=None):
+        enc = ABIContractEncoder()
+        enc.method('scan')
+        enc.typ(ABIContractType.UINT256)
+        enc.typ(ABIContractType.UINT8)
+        enc.uint256(proposal_index)
+        enc.uintn(count, 8)
+        data = add_0x(enc.get())
+        tx = self.template(sender_address, contract_address, use_nonce=True)
+        tx = self.set_code(tx, data)
+        tx = self.finalize(tx, tx_format, id_generator=id_generator)
+        return tx
+
+
+    def finalize_vote(self, contract_address, sender_address, tx_format=TxFormat.JSONRPC, id_generator=None):
+        enc = ABIContractEncoder()
+        enc.method('finalize')
+        data = add_0x(enc.get())
+        tx = self.template(sender_address, contract_address, use_nonce=True)
+        tx = self.set_code(tx, data)
+        tx = self.finalize(tx, tx_format, id_generator=id_generator)
+        return tx
+
+
     def get_proposal(self, contract_address, proposal_idx, sender_address=ZERO_ADDRESS, id_generator=None):
         j = JSONRPCRequest(id_generator)
         o = j.template()
@@ -140,6 +183,22 @@ class Voter(TxFactory):
         o['params'].append('latest')
         o = j.finalize(o)
         return o
+
+
+    def current_proposal_idx(self, contract_address, sender_address=ZERO_ADDRESS, id_generator=None):
+        j = JSONRPCRequest(id_generator)
+        o = j.template()
+        o['method'] = 'eth_call'
+        enc = ABIContractEncoder()
+        enc.method('currentProposal')
+        data = add_0x(enc.get())
+        tx = self.template(sender_address, contract_address)
+        tx = self.set_code(tx, data)
+        o['params'].append(self.normalize(tx))
+        o['params'].append('latest')
+        o = j.finalize(o)
+        return o
+
 
 
     @classmethod
@@ -173,7 +232,6 @@ class Voter(TxFactory):
         dec.val(v[cursor:cursor+64])
 
         r = dec.get()
-        logg.debug('rrr {}'.format(r))
         o = Proposal(r[0],
                      supply=r[1],
                      total=r[2],
