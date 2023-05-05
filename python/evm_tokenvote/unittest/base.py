@@ -28,8 +28,8 @@ class TestEvmVote(TestGiftableToken):
         c = ERC20(self.chain_spec)
         o = c.total_supply(self.address, sender_address=self.accounts[0])
         r = self.rpc.do(o)
-        supply = int(r, 16)
-        self.assertGreater(supply, 0)
+        self.supply = int(r, 16)
+        self.assertGreater(self.supply, 0)
 
         nonce_oracle = RPCNonceOracle(self.accounts[0], conn=self.conn)
         c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
@@ -40,3 +40,9 @@ class TestEvmVote(TestGiftableToken):
         self.assertEqual(r['status'], 1)
         self.voter_address = to_checksum_address(r['contract_address'])
         logg.debug('published voter on address {} with hash {}'.format(self.voter_address, tx_hash))
+
+        self.alice = self.accounts[1]
+        self.bob = self.accounts[2]
+        self.carol = self.accounts[3]
+        self.dave = self.accounts[4]
+        self.mallory = self.accounts[8]

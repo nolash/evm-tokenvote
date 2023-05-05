@@ -9,11 +9,12 @@ pragma solidity ^0.8.0;
 // TODO: voter registration vote, to enforce 50% per-entity cap rule
 
 contract ERC20Vote {
-	uint8 constant STATE_FINAL = 1;
-	uint8 constant STATE_SCANNED = 2;
-	uint8 constant STATE_INSUFFICIENT = 4;
-	uint8 constant STATE_TIED = 8;
-	uint8 constant STATE_SUPPLYCHANGE = 16;
+	uint8 constant STATE_INIT = 1;
+	uint8 constant STATE_FINAL = 2;
+	uint8 constant STATE_SCANNED = 4;
+	uint8 constant STATE_INSUFFICIENT = 8;
+	uint8 constant STATE_TIED = 16;
+	uint8 constant STATE_SUPPLYCHANGE = 32;
 
 	address public token;
 
@@ -59,6 +60,7 @@ contract ERC20Vote {
 		l_blockDeadline = block.number + _blockWait;
 		l_proposal.blockDeadline = l_blockDeadline;
 		l_proposalIndex = proposals.length;
+		l_proposal.state = STATE_INIT;
 		proposals.push(l_proposal);
 		l_proposal.supply = checkSupply(proposals[l_proposalIndex]);
 

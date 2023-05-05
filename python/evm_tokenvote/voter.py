@@ -1,6 +1,7 @@
 # standard imports
 import logging
 import os
+import enum
 
 # external imports
 from chainlib.eth.constant import ZERO_ADDRESS
@@ -27,6 +28,32 @@ from hexathon import (
 from evm_tokenvote.data import data_dir
 
 logg = logging.getLogger()
+
+
+class ProposalState(enum.IntEnum):
+    INIT = 1
+    FINAL = 2
+    SCANNED = 4
+    INSUFFICIENT = 8
+    TIED = 16
+    SUPPLYCHANGE = 32
+
+
+class Proposal:
+   
+    def __init__(self, description_digest, *args, **kwargs):
+        self.description_digest = description_digest
+        self.supply = kwargs.get('supply')
+        self.total = kwargs.get('total')
+        self.block_deadline = kwargs.get('block_deadline')
+        self.target_vote_ppm = kwargs.get('target_vote_ppm')
+        self.proposer = kwargs.get('proposer')
+        self.state = kwargs.get('state')
+        self.serial = kwargs.get('serial')
+
+
+    def __str__(self):
+        return "proposal with description: " + self.description_digest
 
 
 class Voter(TxFactory):
@@ -97,3 +124,63 @@ class Voter(TxFactory):
         tx = self.finalize(tx, tx_format, id_generator=id_generator)
         return tx
 
+
+    def get_proposal(self, contract_address, proposal_idx, sender_address=ZERO_ADDRESS, id_generator=None):
+        j = JSONRPCRequest(id_generator)
+        o = j.template()
+        o['method'] = 'eth_call'
+        enc = ABIContractEncoder()
+        enc.method('proposals')
+        enc.typ(ABIContractType.UINT256)
+        enc.uint256(proposal_idx)
+        data = add_0x(enc.get())
+        tx = self.template(sender_address, contract_address)
+        tx = self.set_code(tx, data)
+        o['params'].append(self.normalize(tx))
+        o['params'].append('latest')
+        o = j.finalize(o)
+        return o
+
+
+    @classmethod
+    def parse_proposal(self, v, serial=None):
+        v = strip_0x(v)
+        logg.debug("proposal {}".format(v))
+
+        cursor = 0
+        dec = ABIContractDecoder()
+        dec.typ(ABIContractType.BYTES32)
+        dec.typ(ABIContractType.UINT256)
+        dec.typ(ABIContractType.UINT256)
+        dec.typ(ABIContractType.UINT256)
+        dec.typ(ABIContractType.UINT256) # actually uint24
+        dec.typ(ABIContractType.ADDRESS)
+        dec.typ(ABIContractType.UINT8)
+        dec.val(v[cursor:cursor+64])
+        #cursor += 64 # options pos
+        #cursor += 64 # optionsvotes pos
+        cursor += 64
+        dec.val(v[cursor:cursor+64])
+        cursor += 64
+        dec.val(v[cursor:cursor+64])
+        cursor += 64
+        dec.val(v[cursor:cursor+64])
+        cursor += 64
+        dec.val(v[cursor:cursor+64])
+        cursor += 64
+        dec.val(v[cursor:cursor+64])
+        cursor += 64
+        dec.val(v[cursor:cursor+64])
+
+        r = dec.get()
+        logg.debug('rrr {}'.format(r))
+        o = Proposal(r[0],
+                     supply=r[1],
+                     total=r[2],
+                     block_deadline=r[3],
+                     target_vote_ppm=r[4],
+                     proposer=r[5],
+                     state=r[6],
+                     serial=serial,
+                     )
+        return o
