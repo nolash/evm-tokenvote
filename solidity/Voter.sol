@@ -5,6 +5,9 @@ pragma solidity ^0.8.0;
 // File-Version: 1
 // Description: Voting contract using ERC20 tokens as shares
 
+// TODO: how to cancel vote prematurely
+// TODO: voter registration vote, to enforce 50% per-entity cap rule
+
 contract ERC20Vote {
 	uint8 constant STATE_FINAL = 1;
 	uint8 constant STATE_SCANNED = 2;
@@ -28,6 +31,7 @@ contract ERC20Vote {
 	}
 
 	Proposal[] public proposals;
+	address accountsRegistry;
 
 	uint256 public currentProposal;
 
@@ -36,27 +40,51 @@ contract ERC20Vote {
 
 	event ProposalAdded(uint256 indexed _blockDeadline, uint256 indexed voteTargetPpm, uint256 indexed _proposalIdx);
 
-	constructor(address _token) {
+	constructor(address _token, address _accountsRegistry) {
 		token = _token;
+		accountsRegistry = _accountsRegistry;
 	}
 
 	// Propose a vote on the subject described by digest.
-	function propose(bytes32 _description, bytes32[] calldata _options, uint256 _blockDeadline, uint24 _targetVotePpm) public returns (uint256) {
+	function proposeMulti(bytes32 _description, bytes32[] memory _options, uint256 _blockWait, uint24 _targetVotePpm) public returns (uint256) {
 		Proposal memory l_proposal;
 		uint256 l_proposalIndex;
+		uint256 l_blockDeadline;
 
 		require(_options.length < 256, "ERR_TOO_MANY_OPTIONS");
 		l_proposal.proposer = msg.sender;
 		l_proposal.description = _description;
 		l_proposal.options = _options;
 		l_proposal.targetVotePpm = _targetVotePpm;
-		l_proposal.blockDeadline = _blockDeadline;
+		l_blockDeadline = block.number + _blockWait;
+		l_proposal.blockDeadline = l_blockDeadline;
 		l_proposalIndex = proposals.length;
 		proposals.push(l_proposal);
 		l_proposal.supply = checkSupply(proposals[l_proposalIndex]);
 
-		emit ProposalAdded(_blockDeadline, _targetVotePpm, l_proposalIndex);
+		emit ProposalAdded(l_blockDeadline, _targetVotePpm, l_proposalIndex);
 		return l_proposalIndex;
+	}
+
+	function propose(bytes32 _description, uint256 _blockWait, uint24 _targetVotePpm) public returns (uint256) {
+		bytes32[] memory options;
+
+		return proposeMulti(_description, options, _blockWait, _targetVotePpm);
+	}
+
+	// reverts on unregistered account if an accounts registry has been added.
+	function mustAccount(address _account) private {
+		bool r;
+		bytes memory v;
+
+		if (accountsRegistry == address(0)) {
+			return;
+		}
+		
+		(r, v) = accountsRegistry.call(abi.encodeWithSignature('have(address)', _account));
+		require(r, "ERR_REGISTRY");
+		r = abi.decode(v, (bool));
+		require(r, "ERR_UNAUTH_ACCOUNT");
 	}
 
 	// Cast votes on an option by locking ERC20 token in contract.
@@ -67,6 +95,7 @@ contract ERC20Vote {
 		bool r;
 		bytes memory v;
 
+		mustAccount(msg.sender);
 		proposal = proposals[currentProposal];
 		if (checkSupply(proposal) == 0) {
 			return false;
@@ -77,7 +106,7 @@ contract ERC20Vote {
 		}
 		require(_optionIndex < proposal.options.length, "ERR_OPTION_INVALID");
 
-		(r, v) = token.call(abi.encodeWithSignature('transferFrom', msg.sender, this, _value));
+		(r, v) = token.call(abi.encodeWithSignature('transferFrom(address,address,uint256)', msg.sender, this, _value));
 		require(r, "ERR_TOKEN");
 		r = abi.decode(v, (bool));
 		require(r, "ERR_TRANSFER");
@@ -165,7 +194,7 @@ contract ERC20Vote {
 		bytes memory v;
 		uint256 l_supply;
 
-		(r, v) = token.call(abi.encodeWithSignature('totalSupply'));
+		(r, v) = token.call(abi.encodeWithSignature('totalSupply()'));
 		require(r, "ERR_TOKEN");
 		l_supply = abi.decode(v, (uint256));
 
@@ -202,7 +231,7 @@ contract ERC20Vote {
 
 		balanceOf[msg.sender] = 0;
 		proposalIdxLock[msg.sender] = 0;
-		(r, v) = token.call(abi.encodeWithSignature('transfer', msg.sender, l_value));
+		(r, v) = token.call(abi.encodeWithSignature('transfer(address,uint256)', msg.sender, l_value));
 		require(r, "ERR_TOKEN");
 		r = abi.decode(v, (bool));
 		require(r, "ERR_TRANSFER");
