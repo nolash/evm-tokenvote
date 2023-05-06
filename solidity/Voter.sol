@@ -68,7 +68,7 @@ contract ERC20Vote {
 		proposals.push(l_proposal);
 		l_proposal.supply = checkSupply(proposals[l_proposalIndex]);
 
-		emit ProposalAdded(l_blockDeadline, _targetVotePpm, l_proposalIndex);
+		emit ProposalAdded(l_blockDeadline, _targetVotePpm, l_proposalIndex - 1);
 		return l_proposalIndex;
 	}
 
