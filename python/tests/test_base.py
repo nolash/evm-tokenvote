@@ -63,6 +63,12 @@ class TestVoteBase(TestEvmVoteProposal):
 
         nonce_oracle = RPCNonceOracle(self.alice, conn=self.conn)
         c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
+        o = c.get_proposal(self.voter_address, 0, sender_address=self.alice)
+        r = self.rpc.do(o)
+        proposal = c.parse_proposal(r)
+        self.assertEqual(proposal.total, 0)
+
+        # vote does not work without approval
         (tx_hash, o) = c.vote(self.voter_address, self.alice, 10)
         self.rpc.do(o)
         o = receipt(tx_hash)
@@ -72,8 +78,8 @@ class TestVoteBase(TestEvmVoteProposal):
         c = ERC20(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
         (tx_hash, o) = c.approve(self.address, self.alice, self.voter_address, 100)
         self.rpc.do(o)
-        
 
+        # vote can be called multiple times (up to balance)
         c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
         (tx_hash, o) = c.vote(self.voter_address, self.alice, 10)
         self.rpc.do(o)
@@ -81,12 +87,17 @@ class TestVoteBase(TestEvmVoteProposal):
         r = self.rpc.do(o)
         self.assertEqual(r['status'], 1)
 
-        c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
         (tx_hash, o) = c.vote(self.voter_address, self.alice, 90)
         self.rpc.do(o)
         o = receipt(tx_hash)
         r = self.rpc.do(o)
         self.assertEqual(r['status'], 1)
+
+        # vote total is updated
+        o = c.get_proposal(self.voter_address, 0, sender_address=self.alice)
+        r = self.rpc.do(o)
+        proposal = c.parse_proposal(r)
+        self.assertEqual(proposal.total, 100)
 
         # fail because all votes used
         c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
