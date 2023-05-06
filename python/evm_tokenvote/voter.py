@@ -179,12 +179,22 @@ class Voter(TxFactory):
         return tx
 
 
+    def withdraw(self, contract_address, sender_address, tx_format=TxFormat.JSONRPC, id_generator=None):
+        enc = ABIContractEncoder()
+        enc.method('withdraw')
+        data = add_0x(enc.get())
+        tx = self.template(sender_address, contract_address, use_nonce=True)
+        tx = self.set_code(tx, data)
+        tx = self.finalize(tx, tx_format, id_generator=id_generator)
+        return tx
+
+
     def get_proposal(self, contract_address, proposal_idx, sender_address=ZERO_ADDRESS, id_generator=None):
         j = JSONRPCRequest(id_generator)
         o = j.template()
         o['method'] = 'eth_call'
         enc = ABIContractEncoder()
-        enc.method('proposals')
+        enc.method('getProposal')
         enc.typ(ABIContractType.UINT256)
         enc.uint256(proposal_idx)
         data = add_0x(enc.get())
@@ -252,12 +262,12 @@ class Voter(TxFactory):
 
 
 
-    def current_proposal_idx(self, contract_address, sender_address=ZERO_ADDRESS, id_generator=None):
+    def current_proposal(self, contract_address, sender_address=ZERO_ADDRESS, id_generator=None):
         j = JSONRPCRequest(id_generator)
         o = j.template()
         o['method'] = 'eth_call'
         enc = ABIContractEncoder()
-        enc.method('currentProposal')
+        enc.method('getCurrentProposal')
         data = add_0x(enc.get())
         tx = self.template(sender_address, contract_address)
         tx = self.set_code(tx, data)
@@ -273,7 +283,7 @@ class Voter(TxFactory):
         v = strip_0x(v)
         logg.debug("proposal {}".format(v))
 
-        cursor = 0
+        cursor = 64
         dec = ABIContractDecoder()
         dec.typ(ABIContractType.BYTES32)
         dec.typ(ABIContractType.UINT256)
@@ -284,8 +294,8 @@ class Voter(TxFactory):
         dec.typ(ABIContractType.UINT8)
 
         dec.val(v[cursor:cursor+64]) # description
-        #cursor += 64 # options pos
-        #cursor += 64 # optionsvotes pos
+        cursor += 64 # options pos
+        cursor += 64 # optionsvotes pos
         cursor += 64
         dec.val(v[cursor:cursor+64])
         cursor += 64

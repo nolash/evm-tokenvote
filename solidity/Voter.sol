@@ -31,10 +31,10 @@ contract ERC20Vote {
 		uint8 scanCursor;
 	}
 
-	Proposal[] public proposals;
+	Proposal[] proposals;
 	address accountsRegistry;
 
-	uint256 public currentProposal;
+	uint256 currentProposal;
 
 	mapping ( address => uint256 ) public balanceOf;
 	mapping ( address => uint256 ) proposalIdxLock;
@@ -42,8 +42,11 @@ contract ERC20Vote {
 	event ProposalAdded(uint256 indexed _blockDeadline, uint256 indexed voteTargetPpm, uint256 indexed _proposalIdx);
 
 	constructor(address _token, address _accountsRegistry) {
+		Proposal memory l_proposal;
 		token = _token;
 		accountsRegistry = _accountsRegistry;
+		proposals.push(l_proposal);
+		currentProposal = 1;
 	}
 
 	// Propose a vote on the subject described by digest.
@@ -69,6 +72,14 @@ contract ERC20Vote {
 		return l_proposalIndex;
 	}
 
+	function getProposal(uint256 _proposalIdx) public view returns(Proposal memory) {
+		return proposals[_proposalIdx + 1];
+	}
+
+	function getCurrentProposal() public view returns(Proposal memory) {
+		return proposals[currentProposal];
+	}
+
 	function propose(bytes32 _description, uint256 _blockWait, uint24 _targetVotePpm) public returns (uint256) {
 		bytes32[] memory options;
 
@@ -78,21 +89,21 @@ contract ERC20Vote {
 	function getOption(uint256 _proposalIdx, uint256 _optionIdx) public view returns (bytes32) {
 		Proposal storage proposal;
 
-		proposal = proposals[_proposalIdx];
+		proposal = proposals[_proposalIdx + 1];
 		return proposal.options[_optionIdx];
 	}
 
 	function optionCount(uint256 _proposalIdx) public view returns(uint256) {
 		Proposal storage proposal;
 
-		proposal = proposals[_proposalIdx];
+		proposal = proposals[_proposalIdx + 1];
 		return proposal.options.length;
 	}
 
 	function voteCount(uint256 _proposalIdx, uint256 _optionIdx) public view returns(uint256) {
 		Proposal storage proposal;
 
-		proposal = proposals[_proposalIdx];
+		proposal = proposals[_proposalIdx + 1];
 		if (proposal.options.length == 0) {
 			require(_optionIdx == 0, "ERR_NO_OPTIONS");
 			return proposal.total;
@@ -131,7 +142,7 @@ contract ERC20Vote {
 		}
 		require(proposal.blockDeadline > block.number, "ERR_DEADLINE");
 		if (proposalIdxLock[msg.sender] > 0) {
-			require(proposalIdxLock[msg.sender] == currentProposal, "ERR_RECOVER_FIRST");
+			require(proposalIdxLock[msg.sender] == currentProposal, "ERR_WITHDRAW_FIRST");
 		}
 		if (proposal.options.length > 0) {
 			require(_optionIndex < proposal.options.length, "ERR_OPTION_INVALID");
@@ -169,7 +180,7 @@ contract ERC20Vote {
 		uint8 c;
 		uint8 state;
 
-		proposal = proposals[_proposalIndex];
+		proposal = proposals[_proposalIndex + 1];
 		require(proposal.blockDeadline <= block.number, "ERR_PREMATURE");
 		if (proposal.state & STATE_SCANNED > 0) {
 			return false;
@@ -255,18 +266,17 @@ contract ERC20Vote {
 	}
 
 	// Recover tokens from a finished vote or from an active vote before deadline.
-	function recover() public returns (uint256) {
+	function withdraw() public returns (uint256) {
 		Proposal storage proposal;
 		bool r;
 		bytes memory v;
 		uint256 l_value;
 
-		proposal = proposals[currentProposal];
-
 		l_value = balanceOf[msg.sender];
 		if (proposalIdxLock[msg.sender] == currentProposal) {
+			proposal = proposals[currentProposal];
 			if (proposal.blockDeadline <= block.number) {
-				require(proposal.state & STATE_FINAL == 0, "ERR_PREMATURE");
+				require(proposal.state & STATE_FINAL > 0, "ERR_PREMATURE");
 			} else {
 				proposal.total -= l_value;
 			}

@@ -34,10 +34,17 @@ class TestVoteBase(TestEvmVoteProposal):
         self.assertTrue(same_hex(proposal.proposer, self.ivan))
         self.assertEqual(proposal.state, ProposalState.INIT)
 
-        o = c.current_proposal_idx(self.voter_address, sender_address=self.accounts[0])
+        o = c.current_proposal(self.voter_address, sender_address=self.accounts[0])
         r = self.rpc.do(o)
-        idx = int(r, 16)
-        self.assertEqual(idx, 0)
+        proposal = c.parse_proposal(r)
+        self.assertTrue(same_hex(proposal.description_digest, hash_of_foo))
+        self.assertEqual(proposal.supply, self.supply)
+        self.assertEqual(proposal.total, 0)
+        self.assertEqual(proposal.block_deadline, self.proposal_block_height + 100)
+        self.assertEqual(proposal.target_vote_ppm, 500000)
+        self.assertTrue(same_hex(proposal.proposer, self.ivan))
+        self.assertEqual(proposal.state, ProposalState.INIT)
+
 
 
     def test_vote(self):
