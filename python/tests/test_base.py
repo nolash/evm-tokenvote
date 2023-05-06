@@ -7,6 +7,7 @@ from chainlib.eth.tx import receipt
 from chainlib.eth.block import block_latest
 from hexathon import same as same_hex
 from eth_erc20 import ERC20
+from giftable_erc20_token import GiftableToken
 
 # local imports
 from evm_tokenvote.unittest import TestEvmVoteProposal
@@ -152,6 +153,7 @@ class TestVoteBase(TestEvmVoteProposal):
         self.assertEqual(proposal.state & ProposalState.FINAL, ProposalState.FINAL)
         self.assertEqual(proposal.state & ProposalState.INSUFFICIENT, 0)
         self.assertEqual(proposal.state & ProposalState.TIED, 0)
+        self.assertEqual(proposal.state & ProposalState.SUPPLYCHANGE, 0)
 
 
     def test_vote_insufficient(self):
@@ -205,6 +207,36 @@ class TestVoteBase(TestEvmVoteProposal):
         self.assertEqual(proposal.state & ProposalState.FINAL, ProposalState.FINAL)
         self.assertEqual(proposal.state & ProposalState.INSUFFICIENT, ProposalState.INSUFFICIENT)
         self.assertEqual(proposal.state & ProposalState.TIED, 0)
+        self.assertEqual(proposal.state & ProposalState.SUPPLYCHANGE, 0)
+
+
+    def test_proposal_invalid_supplychange(self):
+        nonce_oracle = RPCNonceOracle(self.accounts[0], conn=self.conn)
+        c = GiftableToken(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
+        (tx_hash, o) = c.mint_to(self.address, self.accounts[0], self.alice, 1)
+        self.rpc.do(o)
+
+        o = block_latest()
+        now_block_height = self.rpc.do(o)
+        need_blocks = self.proposal_block_height + 100 - now_block_height + 1
+        self.backend.mine_blocks(need_blocks)
+
+        nonce_oracle = RPCNonceOracle(self.trent, conn=self.conn)
+        c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
+        (tx_hash, o) = c.scan(self.voter_address, self.trent, 0, 0)
+        self.rpc.do(o)
+
+        (tx_hash, o) = c.finalize_vote(self.voter_address, self.trent)
+        self.rpc.do(o)
+        o = receipt(tx_hash)
+        r = self.rpc.do(o)
+        self.assertEqual(r['status'], 1)
+
+        o = c.get_proposal(self.voter_address, 0, sender_address=self.accounts[0])
+        r = self.rpc.do(o)
+        proposal = c.parse_proposal(r)
+        self.assertEqual(proposal.state & ProposalState.FINAL, ProposalState.FINAL)
+        self.assertEqual(proposal.state & ProposalState.SUPPLYCHANGE, ProposalState.SUPPLYCHANGE)
 
 
 if __name__ == '__main__':
