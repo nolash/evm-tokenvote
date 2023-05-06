@@ -72,12 +72,18 @@ contract ERC20Vote {
 		return l_proposalIndex;
 	}
 
+	// get proposal by index
 	function getProposal(uint256 _proposalIdx) public view returns(Proposal memory) {
 		return proposals[_proposalIdx + 1];
 	}
 
+	// get currently active proposal
 	function getCurrentProposal() public view returns(Proposal memory) {
-		return proposals[currentProposal];
+		Proposal storage proposal;
+
+		proposal = proposals[currentProposal];
+		require(proposal.state & STATE_INIT > 0, "ERR_NO_CURRENT_PROPOSAL");
+		return proposal;
 	}
 
 	function propose(bytes32 _description, uint256 _blockWait, uint24 _targetVotePpm) public returns (uint256) {

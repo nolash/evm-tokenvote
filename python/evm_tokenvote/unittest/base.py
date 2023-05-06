@@ -12,6 +12,8 @@ from giftable_erc20_token.unittest import TestGiftableToken
 #from giftable_erc20_token import GiftableToken
 from eth_erc20 import ERC20
 from chainlib.eth.block import block_latest
+from eth_accounts_index.unittest import TestAccountsIndex
+from eth_accounts_index.registry import AccountRegistry
 
 # local imports
 from evm_tokenvote import Voter
@@ -23,12 +25,12 @@ hash_of_bar = 'fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9'
 hash_of_baz = 'baa5a0964d3320fbc0c6a922140453c8513ea24ab8fd0577034804a967248096'
 
 
-class TestEvmVote(TestGiftableToken):
+class TestEvmVoteAccounts(TestGiftableToken):
 
     expire = 0
 
     def setUp(self):
-        super(TestEvmVote, self).setUp()
+        super(TestEvmVoteAccounts, self).setUp()
 
         self.alice = self.accounts[1]
         self.bob = self.accounts[2]
@@ -45,7 +47,13 @@ class TestEvmVote(TestGiftableToken):
         r = self.rpc.do(o)
         self.supply = int(r, 16)
         self.assertGreater(self.supply, 0)
-       
+
+
+class TestEvmVote(TestEvmVoteAccounts):
+
+    def setUp(self):
+        super(TestEvmVote, self).setUp()
+
         nonce_oracle = RPCNonceOracle(self.accounts[0], conn=self.conn)
         c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
         (tx_hash, o) = c.constructor(self.accounts[0], self.address)
@@ -72,3 +80,36 @@ class TestEvmVoteProposal(TestEvmVote):
 
         o = block_latest()
         self.proposal_block_height = self.rpc.do(o)
+
+
+
+class TestEvmVoteRegistry(TestEvmVoteAccounts):
+
+    def setUp(self):
+        super(TestEvmVoteRegistry, self).setUp()
+
+        self.token_address = self.address
+
+        nonce_oracle = RPCNonceOracle(self.accounts[0], conn=self.conn)
+        c = AccountRegistry(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
+        (tx_hash, o) = c.constructor(self.accounts[0])
+        self.conn.do(o)
+        o = receipt(tx_hash)
+        r = self.rpc.do(o)
+        self.registry_address = r['contract_address']
+        logg.debug('published with accounts registry contract address {}'.format(r['contract_address']))
+
+        (tx_hash, o) = c.add_writer(self.registry_address, self.accounts[0], self.accounts[0])
+        self.conn.do(o)
+        o = receipt(tx_hash)
+        r = self.rpc.do(o)
+        self.assertEqual(r['status'], 1)
+
+        c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
+        (tx_hash, o) = c.constructor(self.accounts[0], self.token_address, accounts_registry_address=self.registry_address)
+        self.rpc.do(o)
+        o = receipt(tx_hash)
+        r = self.rpc.do(o)
+        self.assertEqual(r['status'], 1)
+        self.voter_address = to_checksum_address(r['contract_address'])
+        logg.debug('published voter on address {} with hash {}'.format(self.voter_address, tx_hash))
