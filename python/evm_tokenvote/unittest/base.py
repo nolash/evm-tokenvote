@@ -19,6 +19,8 @@ from evm_tokenvote import Voter
 logg = logging.getLogger(__name__)
 
 hash_of_foo = '2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae'
+hash_of_bar = 'fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9'
+hash_of_baz = 'baa5a0964d3320fbc0c6a922140453c8513ea24ab8fd0577034804a967248096'
 
 
 class TestEvmVote(TestGiftableToken):

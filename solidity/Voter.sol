@@ -56,6 +56,7 @@ contract ERC20Vote {
 		l_proposal.proposer = msg.sender;
 		l_proposal.description = _description;
 		l_proposal.options = _options;
+		l_proposal.optionVotes = new uint256[](_options.length);
 		l_proposal.targetVotePpm = _targetVotePpm;
 		l_blockDeadline = block.number + _blockWait;
 		l_proposal.blockDeadline = l_blockDeadline;
@@ -72,6 +73,31 @@ contract ERC20Vote {
 		bytes32[] memory options;
 
 		return proposeMulti(_description, options, _blockWait, _targetVotePpm);
+	}
+
+	function getOption(uint256 _proposalIdx, uint256 _optionIdx) public view returns (bytes32) {
+		Proposal storage proposal;
+
+		proposal = proposals[_proposalIdx];
+		return proposal.options[_optionIdx];
+	}
+
+	function optionCount(uint256 _proposalIdx) public view returns(uint256) {
+		Proposal storage proposal;
+
+		proposal = proposals[_proposalIdx];
+		return proposal.options.length;
+	}
+
+	function voteCount(uint256 _proposalIdx, uint256 _optionIdx) public view returns(uint256) {
+		Proposal storage proposal;
+
+		proposal = proposals[_proposalIdx];
+		if (proposal.options.length == 0) {
+			require(_optionIdx == 0, "ERR_NO_OPTIONS");
+			return proposal.total;
+		}
+		return proposal.optionVotes[_optionIdx];
 	}
 
 	// reverts on unregistered account if an accounts registry has been added.
@@ -174,7 +200,7 @@ contract ERC20Vote {
 		}
 		proposal.scanCursor = c;
 		proposal.state = state;
-		if (proposal.scanCursor < proposal.options.length) {
+		if (proposal.scanCursor >= proposal.options.length) {
 			proposal.state |= STATE_SCANNED;
 		}
 		return proposal.state & STATE_SCANNED > 0;

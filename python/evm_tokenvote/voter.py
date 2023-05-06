@@ -109,15 +109,26 @@ class Voter(TxFactory):
 
 
 
-    def propose(self, contract_address, sender_address, description, block_deadline, target_vote_ppm=500000, tx_format=TxFormat.JSONRPC, id_generator=None):
+    def propose(self, contract_address, sender_address, description, block_deadline, target_vote_ppm=500000, options=[], tx_format=TxFormat.JSONRPC, id_generator=None):
         enc = ABIContractEncoder()
-        enc.method('propose')
+        if len(options) == 0: 
+            enc.method('propose')
+        else:
+            enc.method('proposeMulti')
         enc.typ(ABIContractType.BYTES32)
+        if len(options) > 0: 
+            enc.typ_literal('bytes32[]')
         enc.typ(ABIContractType.UINT256)
         enc.typ_literal('uint24')
         enc.bytes32(description)
+        if len(options) > 0: 
+            enc.uint256(32*4)
         enc.uint256(block_deadline)
         enc.uintn(target_vote_ppm, 24)
+        if len(options) > 0: 
+            enc.uint256(len(options))
+            for v in options:
+                enc.bytes32(v)
         data = add_0x(enc.get())
         tx = self.template(sender_address, contract_address, use_nonce=True)
         tx = self.set_code(tx, data)
@@ -185,6 +196,62 @@ class Voter(TxFactory):
         return o
 
 
+    def get_option(self, contract_address, proposal_idx, option_idx, sender_address=ZERO_ADDRESS, id_generator=None):
+        j = JSONRPCRequest(id_generator)
+        o = j.template()
+        o['method'] = 'eth_call'
+        enc = ABIContractEncoder()
+        enc.method('getOption')
+        enc.typ(ABIContractType.UINT256)
+        enc.typ(ABIContractType.UINT256)
+        enc.uint256(proposal_idx)
+        enc.uint256(option_idx)
+        data = add_0x(enc.get())
+        tx = self.template(sender_address, contract_address)
+        tx = self.set_code(tx, data)
+        o['params'].append(self.normalize(tx))
+        o['params'].append('latest')
+        o = j.finalize(o)
+        return o
+
+
+    def option_count(self, contract_address, proposal_idx, sender_address=ZERO_ADDRESS, id_generator=None):
+        j = JSONRPCRequest(id_generator)
+        o = j.template()
+        o['method'] = 'eth_call'
+        enc = ABIContractEncoder()
+        enc.method('optionCount')
+        enc.typ(ABIContractType.UINT256)
+        enc.uint256(proposal_idx)
+        data = add_0x(enc.get())
+        tx = self.template(sender_address, contract_address)
+        tx = self.set_code(tx, data)
+        o['params'].append(self.normalize(tx))
+        o['params'].append('latest')
+        o = j.finalize(o)
+        return o
+
+
+    def vote_count(self, contract_address, proposal_idx, option_idx=0, sender_address=ZERO_ADDRESS, id_generator=None):
+        j = JSONRPCRequest(id_generator)
+        o = j.template()
+        o['method'] = 'eth_call'
+        enc = ABIContractEncoder()
+        enc.method('voteCount')
+        enc.typ(ABIContractType.UINT256)
+        enc.typ(ABIContractType.UINT256)
+        enc.uint256(proposal_idx)
+        enc.uint256(option_idx)
+        data = add_0x(enc.get())
+        tx = self.template(sender_address, contract_address)
+        tx = self.set_code(tx, data)
+        o['params'].append(self.normalize(tx))
+        o['params'].append('latest')
+        o = j.finalize(o)
+        return o
+
+
+
     def current_proposal_idx(self, contract_address, sender_address=ZERO_ADDRESS, id_generator=None):
         j = JSONRPCRequest(id_generator)
         o = j.template()
@@ -215,7 +282,8 @@ class Voter(TxFactory):
         dec.typ(ABIContractType.UINT256) # actually uint24
         dec.typ(ABIContractType.ADDRESS)
         dec.typ(ABIContractType.UINT8)
-        dec.val(v[cursor:cursor+64])
+
+        dec.val(v[cursor:cursor+64]) # description
         #cursor += 64 # options pos
         #cursor += 64 # optionsvotes pos
         cursor += 64
@@ -230,6 +298,7 @@ class Voter(TxFactory):
         dec.val(v[cursor:cursor+64])
         cursor += 64
         dec.val(v[cursor:cursor+64])
+        cursor += 64
 
         r = dec.get()
         o = Proposal(r[0],
