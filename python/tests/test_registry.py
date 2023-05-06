@@ -44,11 +44,11 @@ class TestVoteRegistry(TestEvmVoteRegistry):
 
         nonce_oracle = RPCNonceOracle(self.alice, conn=self.conn)
         c = ERC20(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
-        (tx_hash, o) = c.approve(self.address, self.alice, self.voter_address, 100)
+        (tx_hash, o) = c.approve(self.address, self.alice, self.voter_address, half_supply)
         self.rpc.do(o)
 
         c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
-        (tx_hash, o) = c.vote(self.voter_address, self.alice, half_supply - 1)
+        (tx_hash, o) = c.vote(self.voter_address, self.alice, half_supply)
         self.rpc.do(o)
         o = receipt(tx_hash)
         r = self.rpc.do(o)
