@@ -173,27 +173,27 @@ class TestVoteBase(TestEvmVote):
         (tx_hash, o) = c.propose(self.voter_address, self.accounts[0], hash_of_foo, 100, target_vote_ppm=1000000, options=[hash_of_bar, hash_of_baz])
         self.rpc.do(o)
 
-        nonce_oracle = RPCNonceOracle(self.alice, conn=self.conn)
+        o = block_latest()
+        proposal_block_height = self.rpc.do(o)
+        o = block_latest()
+        now_block_height = self.rpc.do(o)
+
+        need_blocks = proposal_block_height + 100 - now_block_height + 1
+        self.backend.mine_blocks(need_blocks)
+
+        nonce_oracle = RPCNonceOracle(self.trent, conn=self.conn)
         c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
-        (tx_hash, o) = c.vote(self.voter_address, self.alice, third_of_supply, option=1)
+        (tx_hash, o) = c.scan(self.voter_address, self.trent, 0, 2)
         self.rpc.do(o)
-        o = receipt(tx_hash)
-        r = self.rpc.do(o)
-        self.assertEqual(r['status'], 1)
 
-        o = c.vote_count(self.voter_address, 0, 0, sender_address=self.accounts[0])
-        r = self.rpc.do(o)
-        count = int(r, 16)
-        self.assertEqual(count, 0)
-
-        o = c.vote_count(self.voter_address, 0, 1, sender_address=self.accounts[0])
-        r = self.rpc.do(o)
-        count = int(r, 16)
-        self.assertEqual(count, third_of_supply)
+        (tx_hash, o) = c.finalize_vote(self.voter_address, self.trent)
+        self.rpc.do(o)
 
         o = c.get_proposal(self.voter_address, 0, sender_address=self.accounts[0])
         r = self.rpc.do(o)
         proposal = c.parse_proposal(r)
+        self.assertEqual(proposal.state & ProposalState.SCANNED, ProposalState.SCANNED)
+        self.assertEqual(proposal.state & ProposalState.FINAL, ProposalState.FINAL)
         self.assertEqual(proposal.state & ProposalState.INSUFFICIENT, ProposalState.INSUFFICIENT)
 
 
