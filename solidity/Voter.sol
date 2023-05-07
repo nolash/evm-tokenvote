@@ -195,8 +195,14 @@ contract ERC20Vote {
 		proposalIdxLock[msg.sender] = currentProposal;
 		balanceOf[msg.sender] += _value;
 		proposal.total += _value;
-		if (haveQuota(proposal)) {
-			proposal.state |= STATE_IMMEDIATE;
+		if (haveQuotaFor(proposal, proposal.total)) {
+			if (haveQuotaFor(proposal, proposal.cancelVotes)) {
+				proposal.state |= STATE_CANCELLED | STATE_IMMEDIATE;
+			}
+			if (proposal.options.length < 2) {
+				proposal.state |= STATE_IMMEDIATE;
+			}
+
 		}
 	}
 
@@ -216,20 +222,15 @@ contract ERC20Vote {
 	// will set immediate termination and cancelled flag if has target vote majority
 	function voteCancel(uint256 _value) public returns (bool) {
 		Proposal storage proposal;
-		uint256 l_total_m;
 
 		mustAccount(msg.sender, voterRegistry);
 		proposal = proposals[currentProposal];
 		if (!voteable(proposal)) {
 			return false;
 		}
-		voteCore(proposal, _value);
 		proposal.cancelVotes += _value;
+		voteCore(proposal, _value);
 
-		l_total_m = proposal.cancelVotes * 1000000;
-		if (l_total_m / proposal.supply >= proposal.targetVotePpm) {
-			proposal.state |= STATE_CANCELLED | STATE_IMMEDIATE;
-		}
 		return true;
 	}
 
@@ -308,17 +309,18 @@ contract ERC20Vote {
 
 		proposal = proposals[currentProposal];
 		require(proposal.state & STATE_FINAL == 0, "ERR_ALREADY_STATE_FINAL");
-		//require(proposal.state & STATE_SCANNED > 0, "ERR_SCAN_FIRST");
 		if (checkSupply(proposal) == 0) {
 			return false;
 		}
-		proposal.state |= STATE_FINAL;
-
-		if (!haveQuota(proposal)) {
+		if (block.number > proposal.blockDeadline) {
+			require(proposal.state & STATE_CANCELLED == 0, "ERR_PREMATURE");
+		}
+		if (!haveQuotaFor(proposal, proposal.total)) {
 			proposal.state |= STATE_INSUFFICIENT;
 			r = true;
-		} else {
 		}
+		proposal.state |= STATE_FINAL;
+
 		emit ProposalCompleted(currentProposal - 1, proposal.state & STATE_CANCELLED > 0, r, proposal.total);
 
 		currentProposal += 1;
@@ -326,12 +328,11 @@ contract ERC20Vote {
 	}
 
 	// check if target vote count has been met
-	function haveQuota(Proposal storage proposal) private view returns (bool) {
+	function haveQuotaFor(Proposal storage proposal, uint256 _value) private view returns (bool) {
 		uint256 l_total_m;
-		l_total_m = proposal.total * 1000000;
+		l_total_m = _value * 1000000;
 		return l_total_m / proposal.supply >= proposal.targetVotePpm;
 	}
-
 
 	// should be checked for proposal creation, each recorded vote and finalization.	
 	function checkSupply(Proposal storage proposal) private returns (uint256) {

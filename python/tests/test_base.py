@@ -143,7 +143,9 @@ class TestVoteBase(TestEvmVoteProposal):
         (tx_hash, o) = c.vote(self.voter_address, self.alice, 1)
         self.rpc.do(o)
 
-        # majority, don't care about deadline
+        self.backend.mine_blocks(100)
+
+        # majority, but not cancel, we care about deadline
         nonce_oracle = RPCNonceOracle(self.trent, conn=self.conn)
         c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
         (tx_hash, o) = c.scan(self.voter_address, self.trent, 0, 0)
@@ -168,7 +170,6 @@ class TestVoteBase(TestEvmVoteProposal):
         r = self.rpc.do(o)
         proposal = c.parse_proposal(r)
         self.assertEqual(proposal.state & ProposalState.SCANNED, ProposalState.SCANNED)
-        self.assertEqual(proposal.state & ProposalState.IMMEDIATE, ProposalState.IMMEDIATE)
 
         (tx_hash, o) = c.finalize_vote(self.voter_address, self.trent)
         self.rpc.do(o)

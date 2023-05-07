@@ -122,7 +122,6 @@ class TestVoteEvents(TestEvmVote):
         self.assertEqual(int(topic.contents[3], 16), 0)
 
 
-
     def test_event_cancelled(self):
         half_supply = int(self.initial_supply / 2)
         description = hash_of_foo
