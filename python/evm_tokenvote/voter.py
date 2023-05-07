@@ -65,7 +65,7 @@ class Voter(TxFactory):
     __bytecode = None
 
     def constructor(self, sender_address, token_address, protect_supply=False, voter_registry_address=None, proposer_registry_address=None, tx_format=TxFormat.JSONRPC, version=None):
-        code = self.cargs(token_address, protect_supply=protect_supply, voter_registry_address=voter_registry_address, proposer_registry_address=proposer_registry_address)
+        code = self.cargs(token_address, protect_supply=protect_supply, voter_registry_address=voter_registry_address, proposer_registry_address=proposer_registry_address, version=version)
         tx = self.template(sender_address, None, use_nonce=True)
         tx = self.set_code(tx, code)
         return self.finalize(tx, tx_format)

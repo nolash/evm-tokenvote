@@ -9,7 +9,6 @@ from chainlib.eth.nonce import RPCNonceOracle
 from chainlib.eth.tx import receipt
 from chainlib.eth.address import to_checksum_address
 from giftable_erc20_token.unittest import TestGiftableToken
-#from giftable_erc20_token import GiftableToken
 from eth_erc20 import ERC20
 from chainlib.eth.block import block_latest
 from eth_accounts_index.unittest import TestAccountsIndex
