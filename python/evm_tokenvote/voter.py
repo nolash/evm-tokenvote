@@ -64,15 +64,15 @@ class Voter(TxFactory):
     __abi = None
     __bytecode = None
 
-    def constructor(self, sender_address, token_address, voter_registry_address=None, proposer_registry_address=None, tx_format=TxFormat.JSONRPC, version=None):
-        code = self.cargs(token_address, voter_registry_address=voter_registry_address, proposer_registry_address=proposer_registry_address)
+    def constructor(self, sender_address, token_address, protect_supply=False, voter_registry_address=None, proposer_registry_address=None, tx_format=TxFormat.JSONRPC, version=None):
+        code = self.cargs(token_address, protect_supply=protect_supply, voter_registry_address=voter_registry_address, proposer_registry_address=proposer_registry_address)
         tx = self.template(sender_address, None, use_nonce=True)
         tx = self.set_code(tx, code)
         return self.finalize(tx, tx_format)
 
 
     @staticmethod
-    def cargs(token_address, voter_registry_address=None, proposer_registry_address=None, version=None):
+    def cargs(token_address, protect_supply=False, voter_registry_address=None, proposer_registry_address=None, version=None):
         if voter_registry_address == None:
             voter_registry_address = ZERO_ADDRESS
         if proposer_registry_address == None:
@@ -82,6 +82,7 @@ class Voter(TxFactory):
         code = Voter.bytecode(version=version)
         enc = ABIContractEncoder()
         enc.address(token_address)
+        enc.bool(protect_supply)
         enc.address(voter_registry_address)
         enc.address(proposer_registry_address)
         args = enc.get()

@@ -239,7 +239,7 @@ class TestVoteBase(TestEvmVoteProposal):
         self.assertEqual(proposal.state & ProposalState.SUPPLYCHANGE, 0)
 
 
-    def test_proposal_invalid_supplychange(self):
+    def test_proposal_ok_supplychange(self):
         nonce_oracle = RPCNonceOracle(self.accounts[0], conn=self.conn)
         c = GiftableToken(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
         (tx_hash, o) = c.mint_to(self.address, self.accounts[0], self.alice, 1)
@@ -266,6 +266,7 @@ class TestVoteBase(TestEvmVoteProposal):
         proposal = c.parse_proposal(r)
         self.assertEqual(proposal.state & ProposalState.FINAL, ProposalState.FINAL)
         self.assertEqual(proposal.state & ProposalState.SUPPLYCHANGE, ProposalState.SUPPLYCHANGE)
+        self.assertEqual(proposal.state & ProposalState.CANCELLED, 0)
 
 
 if __name__ == '__main__':

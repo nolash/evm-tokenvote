@@ -6,14 +6,14 @@ pragma solidity ^0.8.0;
 // Description: Voting contract using ERC20 tokens as shares
 
 contract ERC20Vote {
-	uint8 constant STATE_INIT = 1;
-	uint8 constant STATE_FINAL = 2;
-	uint8 constant STATE_SCANNED = 4;
-	uint8 constant STATE_INSUFFICIENT = 8;
-	uint8 constant STATE_TIED = 16;
-	uint8 constant STATE_SUPPLYCHANGE = 32;
-	uint8 constant STATE_IMMEDIATE = 64;
-	uint8 constant STATE_CANCELLED = 128;
+	uint8 constant STATE_INIT = 1; // proposal has been initiated.
+	uint8 constant STATE_FINAL = 2; // proposal has been finalized.
+	uint8 constant STATE_SCANNED = 4; // proposal votes have been scanned (this can be done after finalization).
+	uint8 constant STATE_INSUFFICIENT = 8; // proposal did not attract minimum participation before deadline.
+	uint8 constant STATE_TIED = 16; // two or more proposal options have the same amount of votes.
+	uint8 constant STATE_SUPPLYCHANGE = 32; // supply changed while voting was underway.
+	uint8 constant STATE_IMMEDIATE = 64; // minimum participation was attained before deadline.
+	uint8 constant STATE_CANCELLED = 128; // vote to cancel the proposal has the majority.
 
 	address public token;
 
@@ -31,25 +31,44 @@ contract ERC20Vote {
 		uint8 scanCursor;
 	}
 
+	// sequential index of all added proposals.
 	Proposal[] proposals;
+
+	// optional access control registry of which addresses to allow voting.
 	address voterRegistry;
+
+	// optional access control registry of which addresses to allow adding proposals.
 	address proposerRegistry;
 
+	// proposal currently being voted on (provided the proposal has INIT set).
 	uint256 currentProposal;
 
-	mapping ( address => uint256 ) public balanceOf;
-	mapping ( address => uint256 ) proposalIdxLock;
+	// if set, the proposal will be cancelled with supply has been changed.
+	// The proposal will be marked accordingly to disambiguate the cancellation from a cancel vote.
+	bool protectSupply;
 
+	// value of tokens held in escrow per account.
+	mapping ( address => uint256 ) public balanceOf;
+
+	// links escow to specific proposal, controls whether tokens can be withdrawn.
+	mapping ( address => uint256 ) proposalIdxLock;
+	
+	// a new proposal has been added to the proposals index.
 	event ProposalAdded(uint256 indexed _blockDeadline, uint256 indexed voteTargetPpm, uint256 indexed _proposalIdx);
+
+	// the current proposal has been finalized; whether successful, cancelled or insufficient vote.
 	event ProposalCompleted(uint256 indexed _proposalIdx, bool indexed _cancelled, bool indexed _insufficient, uint256 _totalVote);
 
-	constructor(address _token, address _voterRegistry, address _proposerRegistry) {
+	// token must be specified. it is the caller's responsibility to ensure that the token has a value interface.
+	// if a registry is the zero-address, it will be deactivated.
+	constructor(address _token, bool _protectSupply, address _voterRegistry, address _proposerRegistry) {
 		Proposal memory l_proposal;
 		token = _token;
 		voterRegistry = _voterRegistry;
 		proposerRegistry = _proposerRegistry;
 		proposals.push(l_proposal);
 		currentProposal = 1;
+		protectSupply = _protectSupply;
 	}
 
 	// Propose a vote on the subject described by digest.
@@ -330,8 +349,11 @@ contract ERC20Vote {
 		} else if (l_supply != proposal.supply) {
 			proposal.state |= STATE_SUPPLYCHANGE;
 			proposal.state |= STATE_FINAL;
-			currentProposal += 1;
-			return 0;
+			if (protectSupply) {
+				currentProposal += 1;
+				proposal.state |= STATE_CANCELLED;
+				return 0;
+			}
 		}
 		
 		return l_supply;

@@ -48,6 +48,8 @@ class TestEvmVoteAccounts(TestGiftableToken):
         self.supply = int(r, 16)
         self.assertGreater(self.supply, 0)
 
+        self.token_address = self.address
+
 
 class TestEvmVote(TestEvmVoteAccounts):
 
@@ -87,8 +89,6 @@ class TestEvmVoteRegistry(TestEvmVoteAccounts):
 
     def setUp(self):
         super(TestEvmVoteRegistry, self).setUp()
-
-        self.token_address = self.address
 
         nonce_oracle = RPCNonceOracle(self.accounts[0], conn=self.conn)
         c = AccountRegistry(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
