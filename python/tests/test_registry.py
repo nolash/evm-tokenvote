@@ -32,6 +32,19 @@ class TestVoteRegistry(TestEvmVoteRegistry):
         self.rpc.do(o)
         o = receipt(tx_hash)
         r = self.rpc.do(o)
+        self.assertEqual(r['status'], 0)
+
+        nonce_oracle = RPCNonceOracle(self.accounts[0], conn=self.conn)
+        c = AccountsIndex(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
+        (tx_hash, o) = c.add(self.proposer_registry_address, self.accounts[0], self.ivan)
+        self.rpc.do(o)
+
+        nonce_oracle = RPCNonceOracle(self.ivan, conn=self.conn)
+        c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
+        (tx_hash, o) = c.propose(self.voter_address, self.ivan, description, 100)
+        self.rpc.do(o)
+        o = receipt(tx_hash)
+        r = self.rpc.do(o)
         self.assertEqual(r['status'], 1)
 
         nonce_oracle = RPCNonceOracle(self.accounts[0], conn=self.conn)
@@ -58,9 +71,6 @@ class TestVoteRegistry(TestEvmVoteRegistry):
         c = AccountsIndex(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
         (tx_hash, o) = c.add(self.registry_address, self.accounts[0], self.alice)
         self.rpc.do(o)
-        o = receipt(tx_hash)
-        r = self.rpc.do(o)
-        self.assertEqual(r['status'], 1)
 
         nonce_oracle = RPCNonceOracle(self.alice, conn=self.conn)
         c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)

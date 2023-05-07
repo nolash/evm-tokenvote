@@ -126,9 +126,10 @@ class TestVoteBase(TestEvmVoteProposal):
         self.rpc.do(o)
 
         c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
-        (tx_hash, o) = c.vote(self.voter_address, self.alice, half_supply)
+        (tx_hash, o) = c.vote(self.voter_address, self.alice, half_supply - 1)
         self.rpc.do(o)
 
+        # no majority and deadline not reached
         nonce_oracle = RPCNonceOracle(self.trent, conn=self.conn)
         c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
         (tx_hash, o) = c.scan(self.voter_address, self.trent, 0, 0)
@@ -137,15 +138,24 @@ class TestVoteBase(TestEvmVoteProposal):
         r = self.rpc.do(o)
         self.assertEqual(r['status'], 0)
 
-        o = block_latest()
-        now_block_height = self.rpc.do(o)
-        need_blocks = self.proposal_block_height + 100 - now_block_height + 1
-        self.backend.mine_blocks(need_blocks)
+        nonce_oracle = RPCNonceOracle(self.alice, conn=self.conn)
+        c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
+        (tx_hash, o) = c.vote(self.voter_address, self.alice, 1)
+        self.rpc.do(o)
+
+        # majority, don't care about deadline
+        nonce_oracle = RPCNonceOracle(self.trent, conn=self.conn)
+        c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
+        (tx_hash, o) = c.scan(self.voter_address, self.trent, 0, 0)
+        self.rpc.do(o)
+        o = receipt(tx_hash)
+        r = self.rpc.do(o)
+        self.assertEqual(r['status'], 1)
 
         o = c.get_proposal(self.voter_address, 0, sender_address=self.accounts[0])
         r = self.rpc.do(o)
         proposal = c.parse_proposal(r)
-        self.assertEqual(proposal.state, ProposalState.INIT)
+        self.assertEqual(proposal.state & ProposalState.INIT, ProposalState.INIT)
 
         c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
         (tx_hash, o) = c.scan(self.voter_address, self.trent, 0, 0)
@@ -158,6 +168,7 @@ class TestVoteBase(TestEvmVoteProposal):
         r = self.rpc.do(o)
         proposal = c.parse_proposal(r)
         self.assertEqual(proposal.state & ProposalState.SCANNED, ProposalState.SCANNED)
+        self.assertEqual(proposal.state & ProposalState.IMMEDIATE, ProposalState.IMMEDIATE)
 
         (tx_hash, o) = c.finalize_vote(self.voter_address, self.trent)
         self.rpc.do(o)

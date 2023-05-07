@@ -97,7 +97,7 @@ class TestEvmVoteRegistry(TestEvmVoteAccounts):
         o = receipt(tx_hash)
         r = self.rpc.do(o)
         self.registry_address = r['contract_address']
-        logg.debug('published with accounts registry contract address {}'.format(r['contract_address']))
+        logg.debug('published with accounts registry (voter) contract address {}'.format(r['contract_address']))
 
         (tx_hash, o) = c.add_writer(self.registry_address, self.accounts[0], self.accounts[0])
         self.conn.do(o)
@@ -105,8 +105,21 @@ class TestEvmVoteRegistry(TestEvmVoteAccounts):
         r = self.rpc.do(o)
         self.assertEqual(r['status'], 1)
 
+        (tx_hash, o) = c.constructor(self.accounts[0])
+        self.conn.do(o)
+        o = receipt(tx_hash)
+        r = self.rpc.do(o)
+        self.proposer_registry_address = r['contract_address']
+        logg.debug('published with accounts registry (proposer) contract address {}'.format(r['contract_address']))
+
+        (tx_hash, o) = c.add_writer(self.proposer_registry_address, self.accounts[0], self.accounts[0])
+        self.conn.do(o)
+        o = receipt(tx_hash)
+        r = self.rpc.do(o)
+        self.assertEqual(r['status'], 1)
+
         c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
-        (tx_hash, o) = c.constructor(self.accounts[0], self.token_address, accounts_registry_address=self.registry_address)
+        (tx_hash, o) = c.constructor(self.accounts[0], self.token_address, voter_registry_address=self.registry_address, proposer_registry_address=self.proposer_registry_address)
         self.rpc.do(o)
         o = receipt(tx_hash)
         r = self.rpc.do(o)

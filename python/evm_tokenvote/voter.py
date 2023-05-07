@@ -37,6 +37,8 @@ class ProposalState(enum.IntEnum):
     INSUFFICIENT = 8
     TIED = 16
     SUPPLYCHANGE = 32
+    IMMEDIATE = 64
+    CANCELLED = 128
 
 
 class Proposal:
@@ -47,6 +49,7 @@ class Proposal:
         self.total = kwargs.get('total')
         self.block_deadline = kwargs.get('block_deadline')
         self.target_vote_ppm = kwargs.get('target_vote_ppm')
+        self.cancel_votes = kwargs.get('cancel_votes')
         self.proposer = kwargs.get('proposer')
         self.state = kwargs.get('state')
         self.serial = kwargs.get('serial')
@@ -61,23 +64,26 @@ class Voter(TxFactory):
     __abi = None
     __bytecode = None
 
-    def constructor(self, sender_address, token_address, accounts_registry_address=None, tx_format=TxFormat.JSONRPC, version=None):
-        code = self.cargs(token_address, accounts_registry_address=accounts_registry_address)
+    def constructor(self, sender_address, token_address, voter_registry_address=None, proposer_registry_address=None, tx_format=TxFormat.JSONRPC, version=None):
+        code = self.cargs(token_address, voter_registry_address=voter_registry_address, proposer_registry_address=proposer_registry_address)
         tx = self.template(sender_address, None, use_nonce=True)
         tx = self.set_code(tx, code)
         return self.finalize(tx, tx_format)
 
 
     @staticmethod
-    def cargs(token_address, accounts_registry_address=None, version=None):
-        if accounts_registry_address == None:
-            accounts_registry_address = ZERO_ADDRESS
+    def cargs(token_address, voter_registry_address=None, proposer_registry_address=None, version=None):
+        if voter_registry_address == None:
+            voter_registry_address = ZERO_ADDRESS
+        if proposer_registry_address == None:
+            proposer_registry_address = ZERO_ADDRESS
         if token_address == None:
             raise ValueError("token address cannot be zero address")
         code = Voter.bytecode(version=version)
         enc = ABIContractEncoder()
         enc.address(token_address)
-        enc.address(accounts_registry_address)
+        enc.address(voter_registry_address)
+        enc.address(proposer_registry_address)
         args = enc.get()
         code += args
         logg.debug('constructor code: ' + args)
@@ -147,6 +153,18 @@ class Voter(TxFactory):
             enc.typ(ABIContractType.UINT256)
         if option != None:
             enc.uint256(option)
+        enc.uint256(value)
+        data = add_0x(enc.get())
+        tx = self.template(sender_address, contract_address, use_nonce=True)
+        tx = self.set_code(tx, data)
+        tx = self.finalize(tx, tx_format, id_generator=id_generator)
+        return tx
+
+
+    def vote_cancel(self, contract_address, sender_address, value, tx_format=TxFormat.JSONRPC, id_generator=None):
+        enc = ABIContractEncoder()
+        enc.method('voteCancel')
+        enc.typ(ABIContractType.UINT256)
         enc.uint256(value)
         data = add_0x(enc.get())
         tx = self.template(sender_address, contract_address, use_nonce=True)
@@ -289,6 +307,7 @@ class Voter(TxFactory):
         dec.typ(ABIContractType.UINT256)
         dec.typ(ABIContractType.UINT256)
         dec.typ(ABIContractType.UINT256)
+        dec.typ(ABIContractType.UINT256)
         dec.typ(ABIContractType.UINT256) # actually uint24
         dec.typ(ABIContractType.ADDRESS)
         dec.typ(ABIContractType.UINT8)
@@ -309,15 +328,18 @@ class Voter(TxFactory):
         cursor += 64
         dec.val(v[cursor:cursor+64])
         cursor += 64
+        dec.val(v[cursor:cursor+64])
+        cursor += 64
 
         r = dec.get()
         o = Proposal(r[0],
-                     supply=r[1],
-                     total=r[2],
-                     block_deadline=r[3],
-                     target_vote_ppm=r[4],
-                     proposer=r[5],
-                     state=r[6],
+                     cancelVotes=r[1],
+                     supply=r[2],
+                     total=r[3],
+                     block_deadline=r[4],
+                     target_vote_ppm=r[5],
+                     proposer=r[6],
+                     state=r[7],
                      serial=serial,
                      )
         return o
