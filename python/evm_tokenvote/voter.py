@@ -23,6 +23,7 @@ from hexathon import (
     add_0x,
     strip_0x,
 )
+from chainlib.eth.cli.encode import CLIEncoder
 
 # local imports
 from evm_tokenvote.data import data_dir
@@ -94,7 +95,6 @@ class Voter(TxFactory):
     @staticmethod
     def gas(code=None):
         return 4000000
-
 
 
     @staticmethod
@@ -351,7 +351,15 @@ def bytecode(**kwargs):
 
 
 def create(**kwargs):
-    return Voter.cargs(kwargs['token_address'], protect_supply=kwargs.get('protect_supply'), voter_registry=kwargs.get('voter_registry'), proposer_registry=kwargs.get('proposer_registry'), version=kwargs.get('version'))
+    enc = CLIEncoder()
+    (typ, token_address) = enc.translate('a', strip_0x(kwargs['token_address']))
+    voter_registry = kwargs.get('voter_registry')
+    if voter_registry != None:
+        (typ, voter_registry) = enc.translate('a', strip_0x(voter_registry))
+    proposer_registry = kwargs.get('proposer_registry')
+    if proposer_registry != None:
+        (typ, proposer_registry) = enc.translate('a', strip_0x(proposer_registry))
+    return Voter.cargs(token_address=token_address, protect_supply=kwargs.get('protect_supply'), voter_registry=voter_registry, proposer_registry=proposer_registry, version=kwargs.get('version'))
 
 
 def args(v):

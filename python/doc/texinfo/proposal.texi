@@ -1,0 +1,70 @@
+@node proposal
+@chapter Proposal
+
+Proposals are created with a 32-byte description.
+
+How the description should be interpreted is up to the client application.
+
+A proposal may be a binary (yes or no) vote, or define a number of different options to choose from.
+
+
+@section Parameters
+
+The arguments required to create a proposal depends on the type of proposal to create.
+
+
+@subsection Deadline
+
+The deadline must be defined for all proposals.
+
+It is defined as a period of number of blocks during which votes may be made.
+
+If a vote has been completed before the deadline is over, the result will be available immediately.
+
+The contract does not check the sanity of the deadline value. For example, setting the deadline to @code{1} block wait will be useless as voting will expire immediately.
+
+
+@section Target vote
+
+The target vote must be defined for all proposals.
+
+This defines the minimum participation in the vote. It is defined as parts-per-million of the total supply of tokens.
+
+For example. a value of @code{500000} will require 50% of all tokens in the vote. A value of @code{1000000} will require the full supply.
+
+
+@section Options
+
+A proposal may define one or more options for voters to choose between.
+
+Options are defined as 32-byte hexadecimal values. As with the description, it is up to the client application to decide how to interpret the values.
+
+
+@section Creating a proposal
+
+To create a proposal without options:
+
+@verbatim
+# solidity:
+function propose(bytes32 _description, uint256 _blockWait, uint24 _targetVotePpm) public returns (uint256);
+
+# chainlib-python:
+def propose(self, contract_address, sender_address, description, block_deadline, tx_format=TxFormat.JSONRPC, id_generator=None)
+
+# eth-encode CLI:
+$ eth-encode --mode tx --signature propose -e <voter_contract_address> -y <keyfile_json> a:<token_address> u:<blocks_until_deadline> u:<target_vote_ppm>
+@end verbatim
+
+
+To create a proposal with options:
+
+
+@verbatim
+solidity:
+function proposeMulti(bytes32 _description, uint256 _blockWait, uint24 _targetVotePpm) public returns (uint256);
+
+chainlib-python:
+def propose(self, contract_address, sender_address, description, block_deadline, options=[<options_hex>, ...])
+@end verbatim
+
+(Unfortunately, @code{eth-encode} does not currently support dynamic array arguments.)

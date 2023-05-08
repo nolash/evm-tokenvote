@@ -1,0 +1,39 @@
+@appendix Proposal states
+
+@multitable .10 .15 .75 
+@headitem label
+@tab bit value
+@tab description
+@item INIT
+@tab 1
+@tab Proposal has been initiated. It is used to disambiguate a proposal struct that has not yet been added, due to the ambiguity of the default struct value in solidity.
+@item @code{FINAL}
+@tab 2
+@tab @code{finalize()} has been successfully called.
+@item @code{SCANNED}
+@tab 4
+@tab @code{scan(...)} has been successfully called for all available options.
+@item @code{INSUFFICIENT}
+@tab 8
+@tab Voting participation did not been the required target vote before the deadline.
+@item @code{TIED}
+@tab 16
+@tab Proposal contains two or more options, and two or more options have received the same amount of votes before the deadline.
+@item @code{SUPPLYCHANGE}
+@tab 32
+@tab The token supply changed between when the proposal was added and voting ended. If supply is protected, this has also @code{CANCELLED} the vote.
+@item @code{IMMEDIATE}
+@tab 64
+@tab Voting was completed before the deadline.
+@item @code{CANCELLED}
+@tab 128
+@tab Interpretation depends on context. See below.
+@end multitable	
+
+Interpreting @code{CANCELLED}:
+
+@itemize
+@item With @code{SUPPLYCHANGE}, this means that vote has been invalidated and should be discarded.
+@item If proposal has options, it should be interpreted as that the existence of the proposal itself has been @emph{rejected}.
+@item With no or one option, it should be interpreted as the proposal has been @emph{defeated}.
+@end itemize

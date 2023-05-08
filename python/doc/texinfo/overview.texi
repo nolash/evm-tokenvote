@@ -1,0 +1,31 @@
+@node overview
+@chapter Overview
+
+This smart contract enables voting on proposals using ERC20 tokens.
+
+
+@section Tooling
+
+Tests and tools are implemented using the @url{https://pypi.org/project/chainlib-eth, chainlib-eth} python package.
+
+To learn more about the individual CLI tools mentioned in this document, please refer to their individual man pages. The man pages should be installed as part of the python packages.
+
+
+@section Interoperability
+
+The @code{evm-tokenvote} contract implements the @code{cic-contracts:TokenVote} interface.
+
+
+@section Publishing the contract
+
+In python, the smart contract can be published using the @code{constructor} method of the @code{evm_tokenvote.Voter} class.
+
+Also, constructor bytecode can be generated on the command-line using @code{chainlib-gen}. Thereafter, @code{eth-gen} can be used to publish the contract through an rpc endpoint:
+
+@example
+# Make sure evm_tokenvote is in your PYTHONPATH
+$ chainlib-gen evm_tokenvote create --token_address <token_address> > data.bin
+$ eth-gas -p <rpc_url> -y <json_keyfile> [ --passphrase-file <file_with_keyfile_passphrase> ] --data data.bin -i <evm:chain:chain_id:common_name> -s -w 0
+@end example
+
+The @code{token_address} argument @strong{MUST} be an existing and valid @code{ERC20} contract.

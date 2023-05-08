@@ -1,0 +1,82 @@
+@node voting
+@chapter Voting
+
+
+Votes are defined in magnitudes of ERC20 tokens.
+
+A vote will transfer ERC20 tokens to the custody of the smart contract for the duration of the voting.
+
+The smart contract uses the @code{transferFrom} method to transfer tokens. It is the caller's responsibility to make the necessary token allowance (using @code{approve}). Votes with insufficient allowance will fail.
+
+
+@section Proposal context
+
+Votes are always cast on the oldest proposal the has not been completed.
+
+
+@section Options
+
+If multiple options exist, the token holder may freely distribute votes between the options.
+
+
+@section Cancellation votes
+
+In both proposals with and without options, votes can be cast to cancel the proposal.
+
+For proposals with no or one option, the @emph{cancel} amounts to a vote against the proposal.
+
+For proposals with two or more options, the @emph{cancel} amounts to a vote against proposal and its all options.
+
+
+@section How to vote
+
+In each case, make sure the necessary @emph{allowance} has been successfully executed.
+
+For proposals without options, a simplified method can be called:
+
+@verbatim
+# solidity:
+function vote(uint256 _value) public returns (bool);
+
+
+# chainlib-python:
+def vote(self, contract_address, sender_address, value)
+
+
+# eth-encode CLI:
+$ eth-encode --mode tx --signature vote -e <voter_contract_address> -y <keyfile_json> u:<value>
+@end verbatim
+
+
+For proposal with options, the call is slightly more verbose:
+
+@verbatim
+# solidity:
+function voteOption(uint256 _optionIndex, uint256 _value) public returns (bool);
+
+
+# chainlib-python:
+def vote(self, contract_address, sender_address, option=<option_index>, value)
+
+
+# eth-encode CLI:
+$ eth-encode --mode tx --signature voteOption -e <voter_contract_address> -y <keyfile_json> u:<option_index> u:<value>
+@end verbatim
+
+
+To cast votes for cancellation, the call will be:
+
+
+@verbatim
+# solidity:
+function voteCancel(uint256 _value) public returns (bool);
+
+
+# chainlib-python:
+def vote_cancel(self, contract_address, sender_address, value)
+
+
+# eth-encode CLI:
+$ eth-encode --mode tx --signature voteCancel -e <voter_contract_address> -y <keyfile_json> u:<value>
+@end verbatim
+

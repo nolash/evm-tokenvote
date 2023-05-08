@@ -1,0 +1,43 @@
+@node results
+@chapter Results
+
+
+A proposal vote is completed if either of the following are true:
+
+@itemize
+@item The deadline has been reached
+@item Proposal contains zero or one options, and target participation has been reached.
+@item Cancellation votes have the majority.
+@end itemize
+
+
+@section Finalizing the proposal
+
+Once a proposal vote has been completed, the proposal must be explicitly finalized.
+
+Finalization analyzes the results of the vote, and marks the proposal state accordingly.
+
+It also moves the proposal cursor to activate the next proposal in the queue.
+
+Finally, it releases the ERC20 tokens used for the vote.
+
+Finalization is performed using the @code{finalize()} contract method. It will fail if used before the proposal vote has been @emph{completed}.
+
+
+@subsection Enhanced results
+
+The optional method @code{scan(uint256 _proposalIndex, uint256 _count} can be called on a completed proposal to further analyze the results of the vote.
+
+In the current state of the contract, it will iterate the options of the proposal, and mark the state as @code{TIED} if two or more options have the same amount of votes.
+
+This method may be called any time after proposal has been completed (even before @code{finalize()}. The proposal is identified by the @code{_proposalIndex} parameter, where the index is the order of addition of the proposal.
+
+The @code{_count} parameter limits the amount of options that will be scanned. A consecutive call will start at the option where the previous left off. 
+
+
+
+@section Recovering tokens
+
+Before a new vote can take place, the ERC20 tokens used in previous voting must be withdrawn.
+
+Withdrawal is performed using the @code{withdraw()} contract method. It will fail if used before the proposal vote has been @emph{finalized}.

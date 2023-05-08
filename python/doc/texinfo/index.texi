@@ -1,0 +1,30 @@
+\input texinfo
+@settitle evm-tokenvote
+
+@copying
+Released 2023 under AGPL3
+@end copying
+
+@titlepage
+@title evm-tokenvote
+@author Louis Holbrook
+
+@end titlepage
+
+@c
+@contents
+
+@ifnottex
+@node Top
+@top Introduction
+@end ifnottex
+@menu
+* overview ::
+* instructions :
+@end menu
+
+@include overview.texi
+@include proposal.texi
+@include voting.texi
+@include results.texi
+@include states.texi
