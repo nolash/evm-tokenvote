@@ -118,7 +118,7 @@ class TestEvmVoteRegistry(TestEvmVoteAccounts):
         self.assertEqual(r['status'], 1)
 
         c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
-        (tx_hash, o) = c.constructor(self.accounts[0], self.token_address, voter_registry_address=self.registry_address, proposer_registry_address=self.proposer_registry_address)
+        (tx_hash, o) = c.constructor(self.accounts[0], self.token_address, voter_registry=self.registry_address, proposer_registry=self.proposer_registry_address)
         self.rpc.do(o)
         o = receipt(tx_hash)
         r = self.rpc.do(o)

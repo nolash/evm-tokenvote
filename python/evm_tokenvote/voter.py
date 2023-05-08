@@ -64,27 +64,27 @@ class Voter(TxFactory):
     __abi = None
     __bytecode = None
 
-    def constructor(self, sender_address, token_address, protect_supply=False, voter_registry_address=None, proposer_registry_address=None, tx_format=TxFormat.JSONRPC, version=None):
-        code = self.cargs(token_address, protect_supply=protect_supply, voter_registry_address=voter_registry_address, proposer_registry_address=proposer_registry_address, version=version)
+    def constructor(self, sender_address, token_address, protect_supply=False, voter_registry=None, proposer_registry=None, tx_format=TxFormat.JSONRPC, version=None):
+        code = self.cargs(token_address, protect_supply=protect_supply, voter_registry=voter_registry, proposer_registry=proposer_registry, version=version)
         tx = self.template(sender_address, None, use_nonce=True)
         tx = self.set_code(tx, code)
         return self.finalize(tx, tx_format)
 
 
     @staticmethod
-    def cargs(token_address, protect_supply=False, voter_registry_address=None, proposer_registry_address=None, version=None):
-        if voter_registry_address == None:
-            voter_registry_address = ZERO_ADDRESS
-        if proposer_registry_address == None:
-            proposer_registry_address = ZERO_ADDRESS
+    def cargs(token_address, protect_supply=False, voter_registry=None, proposer_registry=None, version=None):
+        if voter_registry == None:
+            voter_registry = ZERO_ADDRESS
+        if proposer_registry == None:
+            proposer_registry = ZERO_ADDRESS
         if token_address == None:
             raise ValueError("token address cannot be zero address")
         code = Voter.bytecode(version=version)
         enc = ABIContractEncoder()
         enc.address(token_address)
         enc.bool(protect_supply)
-        enc.address(voter_registry_address)
-        enc.address(proposer_registry_address)
+        enc.address(voter_registry)
+        enc.address(proposer_registry)
         args = enc.get()
         code += args
         logg.debug('constructor code: ' + args)
@@ -344,3 +344,19 @@ class Voter(TxFactory):
                      serial=serial,
                      )
         return o
+
+
+def bytecode(**kwargs):
+    return Voter.bytecode(version=kwargs.get('version'))
+
+
+def create(**kwargs):
+    return Voter.cargs(kwargs['token_address'], protect_supply=kwargs.get('protect_supply'), voter_registry=kwargs.get('voter_registry'), proposer_registry=kwargs.get('proposer_registry'), version=kwargs.get('version'))
+
+
+def args(v):
+    if v == 'create':
+        return (['token_address'], ['protect_supply', 'voter_registry', 'propose_registry'],)
+    elif v == 'default' or v == 'bytecode':
+        return ([], ['version'],)
+    raise ValueError('unknown command: ' + v)
