@@ -83,7 +83,6 @@ class TestEvmVoteProposal(TestEvmVote):
         self.proposal_block_height = self.rpc.do(o)
 
 
-
 class TestEvmVoteRegistry(TestEvmVoteAccounts):
 
     def setUp(self):

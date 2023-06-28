@@ -115,32 +115,61 @@ class Voter(TxFactory):
         return Voter.__bytecode
 
 
-
-    def propose(self, contract_address, sender_address, description, block_deadline, target_vote_ppm=500000, options=[], tx_format=TxFormat.JSONRPC, id_generator=None):
+    def propose(self, contract_address, sender_address, description, block_deadline, target_vote_ppm=500000, tx_format=TxFormat.JSONRPC, id_generator=None):
         enc = ABIContractEncoder()
-        if len(options) == 0: 
-            enc.method('propose')
-        else:
-            enc.method('proposeMulti')
+        enc.method('propose')
         enc.typ(ABIContractType.BYTES32)
-        if len(options) > 0: 
-            enc.typ_literal('bytes32[]')
         enc.typ(ABIContractType.UINT256)
         enc.typ_literal('uint24')
         enc.bytes32(description)
-        if len(options) > 0: 
-            enc.uint256(32*4)
         enc.uint256(block_deadline)
         enc.uintn(target_vote_ppm, 24)
-        if len(options) > 0: 
-            enc.uint256(len(options))
-            for v in options:
-                enc.bytes32(v)
         data = add_0x(enc.get())
         tx = self.template(sender_address, contract_address, use_nonce=True)
         tx = self.set_code(tx, data)
         tx = self.finalize(tx, tx_format, id_generator=id_generator)
         return tx
+
+
+    def add_option(self, contract_address, sender_address, proposal_idx, description, tx_format=TxFormat.JSONRPC, id_generator=None):
+        enc = ABIContractEncoder()
+        enc.method('addOption')
+        enc.typ(ABIContractType.UINT256)
+        enc.typ(ABIContractType.BYTES32)
+        enc.uint256(proposal_idx)
+        enc.bytes32(description)
+        data = add_0x(enc.get())
+        tx = self.template(sender_address, contract_address, use_nonce=True)
+        tx = self.set_code(tx, data)
+        tx = self.finalize(tx, tx_format, id_generator=id_generator)
+        return tx
+
+
+#    def propose(self, contract_address, sender_address, description, block_deadline, target_vote_ppm=500000, options=[], tx_format=TxFormat.JSONRPC, id_generator=None):
+#        enc = ABIContractEncoder()
+#        if len(options) == 0: 
+#            enc.method('propose')
+#        else:
+#            enc.method('proposeMulti')
+#        enc.typ(ABIContractType.BYTES32)
+#        if len(options) > 0: 
+#            enc.typ_literal('bytes32[]')
+#        enc.typ(ABIContractType.UINT256)
+#        enc.typ_literal('uint24')
+#        enc.bytes32(description)
+#        if len(options) > 0: 
+#            enc.uint256(32*4)
+#        enc.uint256(block_deadline)
+#        enc.uintn(target_vote_ppm, 24)
+#        if len(options) > 0: 
+#            enc.uint256(len(options))
+#            for v in options:
+#                enc.bytes32(v)
+#        data = add_0x(enc.get())
+#        tx = self.template(sender_address, contract_address, use_nonce=True)
+#        tx = self.set_code(tx, data)
+#        tx = self.finalize(tx, tx_format, id_generator=id_generator)
+#        return tx
 
 
     def vote(self, contract_address, sender_address, value, option=None, tx_format=TxFormat.JSONRPC, id_generator=None):

@@ -71,19 +71,17 @@ contract ERC20Vote {
 		protectSupply = _protectSupply;
 	}
 
-	// Propose a vote on the subject described by digest.
-	function proposeMulti(bytes32 _description, bytes32[] memory _options, uint256 _blockWait, uint24 _targetVotePpm) public returns (uint256) {
+	// create new proposal
+	function propose(bytes32 _description, uint256 _blockWait, uint24 _targetVotePpm) public returns (uint256) {
 		Proposal memory l_proposal;
 		uint256 l_proposalIndex;
 		uint256 l_blockDeadline;
 
 		mustAccount(msg.sender, proposerRegistry);
-		require(_options.length < 256, "ERR_TOO_MANY_OPTIONS");
+		//require(_options.length < 256, "ERR_TOO_MANY_OPTIONS");
 
 		l_proposal.proposer = msg.sender;
 		l_proposal.description = _description;
-		l_proposal.options = _options;
-		l_proposal.optionVotes = new uint256[](_options.length);
 		l_proposal.targetVotePpm = _targetVotePpm;
 		l_blockDeadline = block.number + _blockWait;
 		l_proposal.blockDeadline = l_blockDeadline;
@@ -96,11 +94,14 @@ contract ERC20Vote {
 		return l_proposalIndex;
 	}
 
-	// create new proposal without options
-	function propose(bytes32 _description, uint256 _blockWait, uint24 _targetVotePpm) public returns (uint256) {
-		bytes32[] memory options;
+	// Add a voting option to proposal
+	function addOption(uint256 _proposalIdx, bytes32 _optionDescription) public {
+		Proposal storage l_proposal;
 
-		return proposeMulti(_description, options, _blockWait, _targetVotePpm);
+		l_proposal = proposals[_proposalIdx + 1];
+
+		l_proposal.options.push(_optionDescription);
+		l_proposal.optionVotes.push(0);
 	}
 
 	// get proposal by index
@@ -391,4 +392,6 @@ contract ERC20Vote {
 
 		return l_value;
 	}
+
+	// supportsInterface TokenVoter f2e0bfeb
 }

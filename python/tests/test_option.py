@@ -28,7 +28,19 @@ class TestVoteBase(TestEvmVote):
     def test_propose_multi(self):
         nonce_oracle = RPCNonceOracle(self.accounts[0], conn=self.conn)
         c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
-        (tx_hash, o) = c.propose(self.voter_address, self.accounts[0], hash_of_foo, 100, options=[hash_of_bar, hash_of_baz])
+        (tx_hash, o) = c.propose(self.voter_address, self.accounts[0], hash_of_foo, 100)
+        self.rpc.do(o)
+        o = receipt(tx_hash)
+        r = self.rpc.do(o)
+        self.assertEqual(r['status'], 1)
+
+        (tx_hash, o) = c.add_option(self.voter_address, self.accounts[0], 0, hash_of_bar)
+        self.rpc.do(o)
+        o = receipt(tx_hash)
+        r = self.rpc.do(o)
+        self.assertEqual(r['status'], 1)
+
+        (tx_hash, o) = c.add_option(self.voter_address, self.accounts[0], 0, hash_of_baz)
         self.rpc.do(o)
         o = receipt(tx_hash)
         r = self.rpc.do(o)
@@ -94,11 +106,17 @@ class TestVoteBase(TestEvmVote):
 
         nonce_oracle = RPCNonceOracle(self.accounts[0], conn=self.conn)
         c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
-        (tx_hash, o) = c.propose(self.voter_address, self.accounts[0], hash_of_foo, 100, options=[hash_of_bar, hash_of_baz])
+        (tx_hash, o) = c.propose(self.voter_address, self.accounts[0], hash_of_foo, 100)
         self.rpc.do(o)
 
         o = block_latest()
         proposal_block_height = self.rpc.do(o)
+
+        (tx_hash, o) = c.add_option(self.voter_address, self.accounts[0], 0, hash_of_bar)
+        self.rpc.do(o)
+
+        (tx_hash, o) = c.add_option(self.voter_address, self.accounts[0], 0, hash_of_baz)
+        self.rpc.do(o)
 
         nonce_oracle = RPCNonceOracle(self.alice, conn=self.conn)
         c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
@@ -170,7 +188,13 @@ class TestVoteBase(TestEvmVote):
 
         nonce_oracle = RPCNonceOracle(self.accounts[0], conn=self.conn)
         c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
-        (tx_hash, o) = c.propose(self.voter_address, self.accounts[0], hash_of_foo, 100, target_vote_ppm=1000000, options=[hash_of_foo, hash_of_bar, hash_of_baz])
+        (tx_hash, o) = c.propose(self.voter_address, self.accounts[0], hash_of_foo, 100, target_vote_ppm=1000000)
+        self.rpc.do(o)
+
+        (tx_hash, o) = c.add_option(self.voter_address, self.accounts[0], 0, hash_of_bar)
+        self.rpc.do(o)
+
+        (tx_hash, o) = c.add_option(self.voter_address, self.accounts[0], 0, hash_of_baz)
         self.rpc.do(o)
 
         nonce_oracle = RPCNonceOracle(self.alice, conn=self.conn)
@@ -245,7 +269,13 @@ class TestVoteBase(TestEvmVote):
 
         nonce_oracle = RPCNonceOracle(self.accounts[0], conn=self.conn)
         c = Voter(self.chain_spec, signer=self.signer, nonce_oracle=nonce_oracle)
-        (tx_hash, o) = c.propose(self.voter_address, self.accounts[0], hash_of_foo, 100, options=[hash_of_foo, hash_of_bar, hash_of_baz])
+        (tx_hash, o) = c.propose(self.voter_address, self.accounts[0], hash_of_foo, 100)
+        self.rpc.do(o)
+
+        (tx_hash, o) = c.add_option(self.voter_address, self.accounts[0], 0, hash_of_bar)
+        self.rpc.do(o)
+
+        (tx_hash, o) = c.add_option(self.voter_address, self.accounts[0], 0, hash_of_baz)
         self.rpc.do(o)
 
         nonce_oracle = RPCNonceOracle(self.alice, conn=self.conn)
