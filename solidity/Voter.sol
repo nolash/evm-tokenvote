@@ -6,15 +6,15 @@ pragma solidity ^0.8.0;
 // Description: Voting contract using ERC20 tokens as shares
 
 contract ERC20Vote {
-	uint16 constant STATE_INIT = 1; // proposal has been initiated.
-	uint16 constant STATE_FINAL = 2; // proposal has been finalized.
-	uint16 constant STATE_SCANNED = 4; // proposal votes have been scanned (this can be done after finalization).
-	uint16 constant STATE_INSUFFICIENT = 8; // proposal did not attract minimum participation before deadline.
-	uint16 constant STATE_TIED = 16; // two or more proposal options have the same amount of votes.
-	uint16 constant STATE_SUPPLYCHANGE = 32; // supply changed while voting was underway.
-	uint16 constant STATE_IMMEDIATE = 64; // minimum participation was attained before deadline.
-	uint16 constant STATE_CANCELLED = 128; // vote to cancel the proposal has the majority.
-	uint16 constant STATE_DUE = 256; // votes are ready to be tallied.
+	uint8 constant STATE_INIT = 1; // proposal has been initiated.
+	uint8 constant STATE_FINAL = 2; // proposal has been finalized.
+	uint8 constant STATE_SCANNED = 4; // proposal votes have been scanned (this can be done after finalization).
+	uint8 constant STATE_INSUFFICIENT = 8; // proposal did not attract minimum participation before deadline.
+	uint8 constant STATE_TIED = 16; // two or more proposal options have the same amount of votes.
+	uint8 constant STATE_SUPPLYCHANGE = 32; // supply changed while voting was underway.
+	uint8 constant STATE_IMMEDIATE = 64; // minimum participation was attained before deadline.
+	uint8 constant STATE_CANCELLED = 128; // vote to cancel the proposal has the majority.
+	//uint16 constant STATE_DUE = 256; // votes are ready to be tallied.
 
 	bytes32 constant INTERNALS_BLOCK_WAIT_LIMIT = 0x67ca084db32598c571e2ad2dc8b95679c3fa14c63213935dfd8f0a158ff65c57;
 
@@ -30,7 +30,7 @@ contract ERC20Vote {
 		uint256 blockDeadline;
 		uint24 targetVotePpm;
 		address proposer;
-		uint16 state;
+		uint8 state;
 		uint8 scanCursor;
 		bool internals; // vote to govern internal mechanics of the contract. May not contain options.
 	}
@@ -120,7 +120,7 @@ contract ERC20Vote {
 		l_proposal.state = STATE_INIT;
 		l_proposal.internals = _internals;
 		proposals.push(l_proposal);
-		l_proposal.supply = checkSupply(proposals[l_proposalIndex]);
+		l_proposal.supply = checkSupply(proposals[l_proposalIndex + 1]);
 
 		emit ProposalAdded(l_blockDeadline, _targetVotePpm, l_proposalIndex);
 		return l_proposalIndex;
@@ -292,7 +292,7 @@ contract ERC20Vote {
 		uint256 hi;
 		uint256 score;
 		uint8 c;
-		uint16 state;
+		uint8 state;
 
 		proposal = proposals[_proposalIndex + 1];
 		if (proposal.state & STATE_IMMEDIATE == 0) {
