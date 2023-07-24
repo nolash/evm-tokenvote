@@ -130,6 +130,25 @@ class Voter(TxFactory):
         tx = self.finalize(tx, tx_format, id_generator=id_generator)
         return tx
 
+    
+    def propose_blockwait(self, contract_address, sender_address, blockwait, block_deadline, target_vote_ppm=500000, tx_format=TxFormat.JSONRPC, id_generator=None):
+        enc = ABIContractEncoder()
+        enc.method('proposeInternal')
+        enc.typ(ABIContractType.BYTES32)
+        enc.typ(ABIContractType.BYTES32)
+        enc.typ(ABIContractType.UINT256)
+        enc.typ_literal('uint24')
+        enc.bytes32('67ca084db32598c571e2ad2dc8b95679c3fa14c63213935dfd8f0a158ff65c57')
+        blockwait_bytes = blockwait.to_bytes(length=32, byteorder='big')
+        enc.bytes32(blockwait_bytes)
+        enc.uint256(block_deadline)
+        enc.uintn(target_vote_ppm, 24)
+        data = add_0x(enc.get())
+        tx = self.template(sender_address, contract_address, use_nonce=True)
+        tx = self.set_code(tx, data)
+        tx = self.finalize(tx, tx_format, id_generator=id_generator)
+        return tx
+
 
     def add_option(self, contract_address, sender_address, proposal_idx, description, tx_format=TxFormat.JSONRPC, id_generator=None):
         enc = ABIContractEncoder()
@@ -308,6 +327,20 @@ class Voter(TxFactory):
         o = j.finalize(o)
         return o
 
+
+    def block_wait_limit(self, contract_address, sender_address=ZERO_ADDRESS, id_generator=None):
+        j = JSONRPCRequest(id_generator)
+        o = j.template()
+        o['method'] = 'eth_call'
+        enc = ABIContractEncoder()
+        enc.method('blockWaitLimit')
+        data = add_0x(enc.get())
+        tx = self.template(sender_address, contract_address)
+        tx = self.set_code(tx, data)
+        o['params'].append(self.normalize(tx))
+        o['params'].append('latest')
+        o = j.finalize(o)
+        return o
 
 
     def current_proposal(self, contract_address, sender_address=ZERO_ADDRESS, id_generator=None):

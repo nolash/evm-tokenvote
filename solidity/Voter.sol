@@ -6,14 +6,17 @@ pragma solidity ^0.8.0;
 // Description: Voting contract using ERC20 tokens as shares
 
 contract ERC20Vote {
-	uint8 constant STATE_INIT = 1; // proposal has been initiated.
-	uint8 constant STATE_FINAL = 2; // proposal has been finalized.
-	uint8 constant STATE_SCANNED = 4; // proposal votes have been scanned (this can be done after finalization).
-	uint8 constant STATE_INSUFFICIENT = 8; // proposal did not attract minimum participation before deadline.
-	uint8 constant STATE_TIED = 16; // two or more proposal options have the same amount of votes.
-	uint8 constant STATE_SUPPLYCHANGE = 32; // supply changed while voting was underway.
-	uint8 constant STATE_IMMEDIATE = 64; // minimum participation was attained before deadline.
-	uint8 constant STATE_CANCELLED = 128; // vote to cancel the proposal has the majority.
+	uint16 constant STATE_INIT = 1; // proposal has been initiated.
+	uint16 constant STATE_FINAL = 2; // proposal has been finalized.
+	uint16 constant STATE_SCANNED = 4; // proposal votes have been scanned (this can be done after finalization).
+	uint16 constant STATE_INSUFFICIENT = 8; // proposal did not attract minimum participation before deadline.
+	uint16 constant STATE_TIED = 16; // two or more proposal options have the same amount of votes.
+	uint16 constant STATE_SUPPLYCHANGE = 32; // supply changed while voting was underway.
+	uint16 constant STATE_IMMEDIATE = 64; // minimum participation was attained before deadline.
+	uint16 constant STATE_CANCELLED = 128; // vote to cancel the proposal has the majority.
+	uint16 constant STATE_DUE = 256; // votes are ready to be tallied.
+
+	bytes32 constant INTERNALS_BLOCK_WAIT_LIMIT = 0x67ca084db32598c571e2ad2dc8b95679c3fa14c63213935dfd8f0a158ff65c57;
 
 	address public token;
 
@@ -27,8 +30,9 @@ contract ERC20Vote {
 		uint256 blockDeadline;
 		uint24 targetVotePpm;
 		address proposer;
-		uint8 state;
+		uint16 state;
 		uint8 scanCursor;
+		bool internals; // vote to govern internal mechanics of the contract. May not contain options.
 	}
 
 	// sequential index of all added proposals.
@@ -46,6 +50,12 @@ contract ERC20Vote {
 	// if set, the proposal will be cancelled with supply has been changed.
 	// The proposal will be marked accordingly to disambiguate the cancellation from a cancel vote.
 	bool protectSupply;
+
+	// the maximum amount of block waits for a vote
+	uint256 public blockWaitLimit;
+
+	// the deadline of the last added proposal
+	uint256 lastBlockDeadline;
 
 	// value of tokens held in escrow per account.
 	mapping ( address => uint256 ) public balanceOf;
@@ -73,24 +83,46 @@ contract ERC20Vote {
 
 	// create new proposal
 	function propose(bytes32 _description, uint256 _blockWait, uint24 _targetVotePpm) public returns (uint256) {
+		return proposeCore(_description, _blockWait, _targetVotePpm, false);
+	}
+
+	// create new proposal to change internal settings in contract
+	function proposeInternal(bytes32 _description, bytes32 _option, uint256 _blockWait, uint24 _targetVotePpm) public returns (uint256) {
+		bool l_descriptionValid;
+		uint256 l_proposalIndex;
+
+		if (_description == INTERNALS_BLOCK_WAIT_LIMIT) {
+			l_descriptionValid = true;
+		}
+		require(l_descriptionValid, "ERR_INVALID_INTERNAL");
+		l_proposalIndex = proposeCore(_description, _blockWait, _targetVotePpm, true);
+		addOption(l_proposalIndex, _option);
+		return l_proposalIndex;
+	}
+
+	// common code for proposal creation
+	function proposeCore(bytes32 _description, uint256 _blockWait, uint24 _targetVotePpm, bool _internals) private returns (uint256) {
 		Proposal memory l_proposal;
 		uint256 l_proposalIndex;
 		uint256 l_blockDeadline;
 
+		if (blockWaitLimit > 0) {
+			require(_blockWait <= blockWaitLimit, "ERR_WAIT");
+		}
 		mustAccount(msg.sender, proposerRegistry);
-		//require(_options.length < 256, "ERR_TOO_MANY_OPTIONS");
 
+		l_proposalIndex = proposals.length - 1;
 		l_proposal.proposer = msg.sender;
 		l_proposal.description = _description;
 		l_proposal.targetVotePpm = _targetVotePpm;
 		l_blockDeadline = block.number + _blockWait;
 		l_proposal.blockDeadline = l_blockDeadline;
-		l_proposalIndex = proposals.length;
 		l_proposal.state = STATE_INIT;
+		l_proposal.internals = _internals;
 		proposals.push(l_proposal);
 		l_proposal.supply = checkSupply(proposals[l_proposalIndex]);
 
-		emit ProposalAdded(l_blockDeadline, _targetVotePpm, l_proposalIndex - 1);
+		emit ProposalAdded(l_blockDeadline, _targetVotePpm, l_proposalIndex);
 		return l_proposalIndex;
 	}
 
@@ -99,7 +131,6 @@ contract ERC20Vote {
 		Proposal storage l_proposal;
 
 		l_proposal = proposals[_proposalIdx + 1];
-
 		l_proposal.options.push(_optionDescription);
 		l_proposal.optionVotes.push(0);
 	}
@@ -261,7 +292,7 @@ contract ERC20Vote {
 		uint256 hi;
 		uint256 score;
 		uint8 c;
-		uint8 state;
+		uint16 state;
 
 		proposal = proposals[_proposalIndex + 1];
 		if (proposal.state & STATE_IMMEDIATE == 0) {
@@ -321,11 +352,21 @@ contract ERC20Vote {
 			r = true;
 		}
 		proposal.state |= STATE_FINAL;
-
+		
+		if (proposal.internals) {
+			finalizeInternal(proposal.description, proposal.options[0]);
+		}
 		emit ProposalCompleted(currentProposal - 1, proposal.state & STATE_CANCELLED > 0, r, proposal.total);
 
 		currentProposal += 1;
 		return !r;
+	}
+
+	// execute state changes for internals proposals
+	function finalizeInternal(bytes32 _description, bytes32 _optionDescription) private { 
+		if (_description == INTERNALS_BLOCK_WAIT_LIMIT) {
+			blockWaitLimit = uint256(_optionDescription);
+		}
 	}
 
 	// check if target vote count has been met
@@ -381,7 +422,6 @@ contract ERC20Vote {
 			proposal = proposals[currentProposal];
 			require(proposal.state & STATE_FINAL > 0, "ERR_PREMATURE");
 		}
-
 
 		balanceOf[msg.sender] = 0;
 		proposalIdxLock[msg.sender] = 0;

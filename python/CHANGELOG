@@ -1,0 +1,9 @@
+- 0.0.3
+	* Introduce block wait limit
+	* Add internal state change proposal mode
+	* Implement change of block wait limit through (internal) proposal
+- 0.0.2
+	* Separate option addition from proposal creation 
+- 0.0.1
+	* Create proposals, with our without options
+	* Vote with ERC20 tokens
